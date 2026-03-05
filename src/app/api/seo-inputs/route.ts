@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, sql } from '@/lib/db';
-
+ 
 export async function GET(req: NextRequest) {
   const scanCode = req.nextUrl.searchParams.get('scanCode');
   if (!scanCode) {
     return NextResponse.json({ error: 'scanCode is required' }, { status: 400 });
   }
-
+ 
   try {
     const db = await getDb();
     const result = await db.request()
@@ -25,11 +25,11 @@ export async function GET(req: NextRequest) {
           Content,              SuggestedContent,
           PrimaryKeywords, SecondaryKeyword,
           WordCount, InternalLinks, ExternalLinks,
-          StatusCode, Priority, IsAddressed,
+          StatusCode, SEO_Priority AS Priority, IsAddressed,
           ScrapedDateTime
         FROM AISEO_PageSEOInputs
-        WHERE ScanCode = @scanCode
-        ORDER BY Priority DESC, Url
+        WHERE scancode = @scanCode
+        ORDER BY SEO_Priority DESC, Url
       `);
     return NextResponse.json(result.recordset);
   } catch (err) {

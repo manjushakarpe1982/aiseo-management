@@ -256,8 +256,7 @@ export default function Home() {
 
   // Load scan codes
   useEffect(() => {
-    // fetch('/api/scan-codes').then(r => r.json()).then(setScanCodes).catch(console.error);
-      setScanCodes(["2026-03-05-16:03"]);
+    fetch('/api/scan-codes').then(r => r.json()).then(setScanCodes).catch(console.error);
   }, []);
 
   // Load errors (called on scan change OR filter change)
@@ -295,11 +294,11 @@ export default function Home() {
     loadErrors(code);
 
     setLoadingSeo(true);
-    // fetch(`/api/seo-inputs?scanCode=${encodeURIComponent(code)}`)
-    //   .then(r => r.json())
-    //   .then(data => setSeoInputs(Array.isArray(data) ? data : []))
-    //   .catch(console.error)
-    //   .finally(() => setLoadingSeo(false));
+    fetch(`/api/seo-inputs?scanCode=${encodeURIComponent(code)}`)
+      .then(r => r.json())
+      .then(data => setSeoInputs(Array.isArray(data) ? data : []))
+      .catch(console.error)
+      .finally(() => setLoadingSeo(false));
   }
 
   // Filter change handlers
