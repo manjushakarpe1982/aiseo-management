@@ -256,7 +256,8 @@ export default function Home() {
 
   // Load scan codes
   useEffect(() => {
-    fetch('/api/scan-codes').then(r => r.json()).then(setScanCodes).catch(console.error);
+    // fetch('/api/scan-codes').then(r => r.json()).then(setScanCodes).catch(console.error);
+      setScanCodes(["2026-03-05-16:03"]);
   }, []);
 
   // Load errors (called on scan change OR filter change)
