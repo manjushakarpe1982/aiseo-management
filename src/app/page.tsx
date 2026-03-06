@@ -305,6 +305,17 @@ function SeoModal({ page, onClose }: { page: PageSEOInput; onClose: () => void }
   );
 }
 
+// ─── Status options ───────────────────────────────────────────────
+const STATUS_OPTIONS = ['Yet to check', 'Updated', 'Deferred'] as const;
+type StatusOption = typeof STATUS_OPTIONS[number];
+
+function statusSelectCls(status: string | null) {
+  const s = status ?? 'Yet to check';
+  if (s === 'Updated')  return 'bg-emerald-50 text-emerald-700 border-emerald-300 focus:border-emerald-400 focus:ring-emerald-100';
+  if (s === 'Deferred') return 'bg-amber-50 text-amber-700 border-amber-300 focus:border-amber-400 focus:ring-amber-100';
+  return 'bg-slate-50 text-slate-600 border-slate-200 focus:border-blue-400 focus:ring-blue-100';
+}
+
 // ─── SEO Field pairs ──────────────────────────────────────────────
 const SEO_FIELD_PAIRS: { label: string; old: keyof PageSEOInput; sug: keyof PageSEOInput }[] = [
   { label: 'Meta Title',       old: 'MetaTitle',       sug: 'SuggestedMetaTitle' },
@@ -346,9 +357,9 @@ export default function Home() {
   const [fixes, setFixes]                   = useState<CannibalizationFix[]>([]);
   const [loadingFixes, setLoadingFixes]     = useState(false);
 
-  // Processed By / Processed state for errors table
+  // Processed By / Status state for errors table
   const [processedByMap, setProcessedByMap] = useState<Record<number, string>>({});
-  const [processedMap, setProcessedMap]     = useState<Record<number, boolean>>({});
+  const [statusMap, setStatusMap]           = useState<Record<number, string>>({});
   const [processedByErrId, setProcessedByErrId] = useState<number | null>(null);
 
   // SEO
@@ -358,9 +369,9 @@ export default function Home() {
   const [seoPage, setSeoPage]               = useState(1);
   const [modalSeoPage, setModalSeoPage]     = useState<PageSEOInput | null>(null);
 
-  // SEO Processed By / Processed state
+  // SEO Processed By / Status state
   const [seoProcessedByMap, setSeoProcessedByMap]   = useState<Record<number, string>>({});
-  const [seoProcessedMap, setSeoProcessedMap]       = useState<Record<number, boolean>>({});
+  const [seoStatusMap, setSeoStatusMap]             = useState<Record<number, string>>({});
   const [seoProcessedByErrId, setSeoProcessedByErrId] = useState<number | null>(null);
 
   // Load scan codes
@@ -382,13 +393,13 @@ export default function Home() {
         const arr = Array.isArray(data) ? data : [];
         setErrors(arr);
         const initPB: Record<number, string> = {};
-        const initP: Record<number, boolean> = {};
+        const initS: Record<number, string>  = {};
         arr.forEach((e: CannibalizationError) => {
           initPB[e.Id] = e.ProcessedBy ?? '';
-          initP[e.Id]  = e.IsProcessed ?? false;
+          initS[e.Id]  = e.Status ?? 'Yet to check';
         });
         setProcessedByMap(initPB);
-        setProcessedMap(initP);
+        setStatusMap(initS);
         setProcessedByErrId(null);
       })
       .catch(console.error)
@@ -402,8 +413,8 @@ export default function Home() {
     setSelIssueType(''); setSelPriority(''); setUrlInput(''); setUrlFilter('');
     setFilterIssueTypes([]); setFilterPriorities([]);
     setErrPage(1); setSeoPage(1);
-    setProcessedByMap({}); setProcessedMap({}); setProcessedByErrId(null);
-    setSeoProcessedByMap({}); setSeoProcessedMap({}); setSeoProcessedByErrId(null); setModalSeoPage(null);
+    setProcessedByMap({}); setStatusMap({}); setProcessedByErrId(null);
+    setSeoProcessedByMap({}); setSeoStatusMap({}); setSeoProcessedByErrId(null); setModalSeoPage(null);
     if (!code) return;
 
     // Load filter options
@@ -423,13 +434,13 @@ export default function Home() {
         const arr = Array.isArray(data) ? data : [];
         setSeoInputs(arr);
         const initPB: Record<number, string> = {};
-        const initP:  Record<number, boolean> = {};
+        const initS:  Record<number, string>  = {};
         arr.forEach((s: PageSEOInput) => {
           initPB[s.Id] = s.ProcessedBy ?? '';
-          initP[s.Id]  = s.IsProcessed ?? false;
+          initS[s.Id]  = s.Status ?? 'Yet to check';
         });
         setSeoProcessedByMap(initPB);
-        setSeoProcessedMap(initP);
+        setSeoStatusMap(initS);
       })
       .catch(console.error)
       .finally(() => setLoadingSeo(false));
@@ -453,35 +464,35 @@ export default function Home() {
     loadErrors(selectedScan);
   }
 
-  // Handle Processed checkbox in errors table
-  async function handleCheckboxChange(errId: number, checked: boolean) {
+  // Handle Status dropdown in errors table
+  async function handleStatusChange(errId: number, newStatus: string) {
     const pb = (processedByMap[errId] ?? '').trim();
-    if (checked && !pb) {
+    if (newStatus !== 'Yet to check' && !pb) {
       setProcessedByErrId(errId);
       return;
     }
     setProcessedByErrId(null);
-    setProcessedMap(prev => ({ ...prev, [errId]: checked }));
+    setStatusMap(prev => ({ ...prev, [errId]: newStatus }));
     await fetch('/api/errors', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: errId, isProcessed: checked, processedBy: pb }),
+      body: JSON.stringify({ id: errId, status: newStatus, processedBy: pb }),
     }).catch(console.error);
   }
 
-  // Handle Processed checkbox in SEO table
-  async function handleSeoCheckboxChange(pageId: number, checked: boolean) {
+  // Handle Status dropdown in SEO table
+  async function handleSeoStatusChange(pageId: number, newStatus: string) {
     const pb = (seoProcessedByMap[pageId] ?? '').trim();
-    if (checked && !pb) {
+    if (newStatus !== 'Yet to check' && !pb) {
       setSeoProcessedByErrId(pageId);
       return;
     }
     setSeoProcessedByErrId(null);
-    setSeoProcessedMap(prev => ({ ...prev, [pageId]: checked }));
+    setSeoStatusMap(prev => ({ ...prev, [pageId]: newStatus }));
     await fetch('/api/seo-inputs', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: pageId, isProcessed: checked, processedBy: pb }),
+      body: JSON.stringify({ id: pageId, status: newStatus, processedBy: pb }),
     }).catch(console.error);
   }
 
@@ -700,7 +711,7 @@ export default function Home() {
                           <Th>Priority</Th>
                           <Th>Score</Th>
                           <Th className="w-44">Processed By</Th>
-                          <Th className="w-24 text-center">Processed</Th>
+                          <Th className="w-36">Status</Th>
                         </tr>
                       </thead>
                       <tbody>
@@ -741,20 +752,21 @@ export default function Home() {
                                     setProcessedByMap(prev => ({ ...prev, [err.Id]: e.target.value }));
                                     if (processedByErrId === err.Id) setProcessedByErrId(null);
                                   }}
-                                  disabled={processedMap[err.Id] === true}
+                                  disabled={(statusMap[err.Id] ?? 'Yet to check') !== 'Yet to check'}
                                   className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all placeholder:text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed"
                                 />
                               </td>
 
-                              {/* Processed checkbox */}
-                              <td className="px-4 py-3 text-center">
-                                <div className="flex flex-col items-center gap-1">
-                                  <input
-                                    type="checkbox"
-                                    checked={processedMap[err.Id] ?? false}
-                                    onChange={e => handleCheckboxChange(err.Id, e.target.checked)}
-                                    className="w-4 h-4 accent-blue-600 cursor-pointer"
-                                  />
+                              {/* Status dropdown */}
+                              <td className="px-4 py-3">
+                                <div className="flex flex-col gap-1">
+                                  <select
+                                    value={statusMap[err.Id] ?? 'Yet to check'}
+                                    onChange={e => handleStatusChange(err.Id, e.target.value)}
+                                    className={`w-full border rounded-lg px-2 py-1.5 text-xs outline-none focus:ring-2 transition-all cursor-pointer ${statusSelectCls(statusMap[err.Id] ?? null)}`}
+                                  >
+                                    {STATUS_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                  </select>
                                   {processedByErrId === err.Id && (
                                     <span className="text-[12px] text-red-500 whitespace-nowrap">Fill Processed By first</span>
                                   )}
@@ -793,7 +805,7 @@ export default function Home() {
                           <Th className="w-20">Priority</Th>
                           <Th className="w-20">Words</Th>
                           <Th className="w-44">Processed By</Th>
-                          <Th className="w-24 text-center">Processed</Th>
+                          <Th className="w-36">Status</Th>
                           <Th className="w-20 text-center">Detail</Th>
                         </tr>
                       </thead>
@@ -821,20 +833,21 @@ export default function Home() {
                                     setSeoProcessedByMap(prev => ({ ...prev, [page.Id]: e.target.value }));
                                     if (seoProcessedByErrId === page.Id) setSeoProcessedByErrId(null);
                                   }}
-                                  disabled={seoProcessedMap[page.Id] === true}
+                                  disabled={(seoStatusMap[page.Id] ?? 'Yet to check') !== 'Yet to check'}
                                   className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all placeholder:text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed"
                                 />
                               </td>
 
-                              {/* Processed checkbox */}
-                              <td className="px-4 py-3 text-center">
-                                <div className="flex flex-col items-center gap-1">
-                                  <input
-                                    type="checkbox"
-                                    checked={seoProcessedMap[page.Id] ?? false}
-                                    onChange={e => handleSeoCheckboxChange(page.Id, e.target.checked)}
-                                    className="w-4 h-4 accent-blue-600 cursor-pointer"
-                                  />
+                              {/* Status dropdown */}
+                              <td className="px-4 py-3">
+                                <div className="flex flex-col gap-1">
+                                  <select
+                                    value={seoStatusMap[page.Id] ?? 'Yet to check'}
+                                    onChange={e => handleSeoStatusChange(page.Id, e.target.value)}
+                                    className={`w-full border rounded-lg px-2 py-1.5 text-xs outline-none focus:ring-2 transition-all cursor-pointer ${statusSelectCls(seoStatusMap[page.Id] ?? null)}`}
+                                  >
+                                    {STATUS_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                  </select>
                                   {seoProcessedByErrId === page.Id && (
                                     <span className="text-[12px] text-red-500 whitespace-nowrap">Fill Processed By first</span>
                                   )}
