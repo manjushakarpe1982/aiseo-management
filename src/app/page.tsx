@@ -15,7 +15,7 @@ function PriorityBadge({ priority }: { priority: number | null }) {
     3: { label: 'High',   cls: 'bg-red-50 text-red-600 border-red-200' },
   };
   const p = map[priority ?? 1] ?? map[1];
-  return <span className={`inline-block text-[10px] font-semibold uppercase tracking-wider px-2.5 py-0.5 rounded-full border ${p.cls}`}>{p.label}</span>;
+  return <span className={`inline-block text-[12px] font-semibold uppercase tracking-wider px-2.5 py-0.5 rounded-full border ${p.cls}`}>{p.label}</span>;
 }
 
 function ScoreBar({ score }: { score: number | null }) {
@@ -35,13 +35,13 @@ function Tag({ children, variant = 'blue' }: { children: React.ReactNode; varian
   const cls = variant === 'blue'
     ? 'bg-blue-50 text-blue-600 border-blue-200'
     : 'bg-emerald-50 text-emerald-600 border-emerald-200';
-  return <span className={`inline-block text-[10px] font-mono font-medium px-2 py-0.5 rounded border whitespace-nowrap ${cls}`}>{children}</span>;
+  return <span className={`inline-block text-[12px] font-mono font-medium px-2 py-0.5 rounded border whitespace-nowrap ${cls}`}>{children}</span>;
 }
 
 function StatusBadge({ code }: { code: number | null }) {
   if (!code) return <span className="text-slate-400 text-xs">—</span>;
   const cls = code < 300 ? 'bg-emerald-50 text-emerald-600' : code < 400 ? 'bg-amber-50 text-amber-600' : 'bg-red-50 text-red-600';
-  return <span className={`text-[10px] font-mono font-semibold px-2 py-0.5 rounded ${cls}`}>{code}</span>;
+  return <span className={`text-[12px] font-mono font-semibold px-2 py-0.5 rounded ${cls}`}>{code}</span>;
 }
 
 function EmptyState({ icon, message }: { icon: string; message: string }) {
@@ -64,9 +64,9 @@ function Spinner() {
 function SectionTitle({ title, count }: { title: string; count?: number }) {
   return (
     <div className="flex items-center gap-3 mb-3">
-      <span className="text-[11px] font-bold uppercase tracking-widest text-slate-400" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>{title}</span>
+      <span className="text-[13px] font-bold uppercase tracking-widest text-slate-400" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>{title}</span>
       {count !== undefined && (
-        <span className="text-[10px] font-semibold bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full border border-blue-100">{count}</span>
+        <span className="text-[12px] font-semibold bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full border border-blue-100">{count}</span>
       )}
       <div className="flex-1 h-px bg-slate-100" />
     </div>
@@ -76,7 +76,7 @@ function SectionTitle({ title, count }: { title: string; count?: number }) {
 function Th({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return (
     <th style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}
-      className={`text-[10px] font-bold uppercase tracking-widest text-slate-400 px-4 py-3 text-left whitespace-nowrap bg-slate-50 border-b border-slate-100 ${className}`}>
+      className={`text-[12px] font-bold uppercase tracking-widest text-slate-400 px-4 py-3 text-left whitespace-nowrap bg-slate-50 border-b border-slate-100 ${className}`}>
       {children}
     </th>
   );
@@ -176,7 +176,7 @@ function FixesModal({
               {fixUrl ?? '⚡ All URLs'}
             </span>
             {fixes.length > 0 && (
-              <span className="ml-1 text-[10px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-semibold">
+              <span className="ml-1 text-[12px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-semibold">
                 {fixes.length} fix{fixes.length !== 1 ? 'es' : ''}
               </span>
             )}
@@ -210,7 +210,7 @@ function FixesModal({
                   <tr key={fix.Id} className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50 transition-colors">
                     <td className="px-4 py-4 text-slate-400 text-xs font-mono align-top">{i + 1}</td>
                     <td className="px-4 py-4 align-top">
-                      <span className="text-sky-600 text-[11px] font-mono break-all leading-relaxed">{fix.Url || '—'}</span>
+                      <span className="text-sky-600 text-[13px] font-mono break-all leading-relaxed">{fix.Url || '—'}</span>
                     </td>
                     <td className="px-4 py-4 align-top"><Tag variant="blue">{fix.ContentType}</Tag></td>
                     <td className="px-4 py-4 text-xs text-slate-600 leading-relaxed align-top max-w-xs">
@@ -229,9 +229,9 @@ function FixesModal({
                           onBlur={e => { if (e.target.value.trim()) saveFixProcessedBy(fix.Id, e.target.value.trim()); }}
                           className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all placeholder:text-slate-300"
                         />
-                        {savingMap[fix.Id] && <span className="text-[10px] text-slate-400">Saving…</span>}
+                        {savingMap[fix.Id] && <span className="text-[12px] text-slate-400">Saving…</span>}
                         {!savingMap[fix.Id] && processedByMap[fix.Id]?.trim() && (processedByMap[fix.Id] === (fix.ProcessedBy ?? '')) && (
-                          <span className="text-[10px] text-emerald-500">✓ Saved</span>
+                          <span className="text-[12px] text-emerald-500">✓ Saved</span>
                         )}
                       </div>
                     </td>
@@ -447,10 +447,10 @@ export default function Home() {
               <h1 className="text-base font-bold text-slate-800 leading-none" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
                 AISEO <span className="text-blue-600">Dashboard</span>
               </h1>
-              <p className="text-slate-400 text-[10px] mt-0.5">Cannibalization & SEO Analysis</p>
+              <p className="text-slate-400 text-[12px] mt-0.5">Cannibalization & SEO Analysis</p>
             </div>
           </div>
-          <span className="text-[10px] font-semibold uppercase tracking-widest px-3 py-1 rounded-full bg-blue-50 text-blue-600 border border-blue-100">Beta</span>
+          <span className="text-[12px] font-semibold uppercase tracking-widest px-3 py-1 rounded-full bg-blue-50 text-blue-600 border border-blue-100">Beta</span>
         </div>
       </header>
 
@@ -459,7 +459,7 @@ export default function Home() {
         {/* SCAN + GLOBAL SEARCH */}
         <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4 flex flex-wrap items-center gap-4">
           <div className="flex items-center gap-3 flex-1 min-w-[240px]">
-            <label className="text-[11px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap"
+            <label className="text-[13px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap"
               style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Scan Code</label>
             <select
               value={selectedScan}
@@ -493,7 +493,7 @@ export default function Home() {
                 { label: 'Avg Score', value: avgScore,         cls: 'bg-amber-50 text-amber-600 border-amber-100' },
                 { label: 'SEO Pages', value: seoInputs.length, cls: 'bg-blue-50 text-blue-600 border-blue-100' },
               ].map(({ label, value, cls }) => (
-                <div key={label} className={`text-[11px] px-3 py-1.5 rounded-full border font-medium ${cls}`}>
+                <div key={label} className={`text-[13px] px-3 py-1.5 rounded-full border font-medium ${cls}`}>
                   {label}: <span className="font-bold">{value ?? '—'}</span>
                 </div>
               ))}
@@ -515,7 +515,7 @@ export default function Home() {
               >
                 <span>{tab.icon}</span>
                 {tab.label}
-                <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded-full ${activeTab === tab.id ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-400'}`}>
+                <span className={`text-[12px] font-mono px-1.5 py-0.5 rounded-full ${activeTab === tab.id ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-400'}`}>
                   {tab.count}
                 </span>
               </button>
@@ -530,7 +530,7 @@ export default function Home() {
             {/* FILTERS ROW */}
             <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4 flex flex-wrap items-end gap-3">
               <div className="flex flex-col gap-1 min-w-[180px]">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400"
+                <label className="text-[12px] font-bold uppercase tracking-widest text-slate-400"
                   style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Issue Type</label>
                 <select value={selIssueType} onChange={e => onIssueTypeChange(e.target.value)}
                   className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all cursor-pointer">
@@ -540,7 +540,7 @@ export default function Home() {
               </div>
 
               <div className="flex flex-col gap-1 min-w-[140px]">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400"
+                <label className="text-[12px] font-bold uppercase tracking-widest text-slate-400"
                   style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Priority</label>
                 <select value={selPriority} onChange={e => onPriorityChange(e.target.value)}
                   className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all cursor-pointer">
@@ -552,7 +552,7 @@ export default function Home() {
               </div>
 
               <div className="flex flex-col gap-1 flex-1 min-w-[200px]">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400"
+                <label className="text-[12px] font-bold uppercase tracking-widest text-slate-400"
                   style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>URL Search</label>
                 <div className="flex gap-2">
                   <input
@@ -584,7 +584,7 @@ export default function Home() {
               <SectionTitle title="Cannibalization Errors" count={errors.length} />
               <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
 
-                <div className="flex items-center gap-2 px-4 py-2.5 bg-slate-50 border-b border-slate-100 text-[11px] text-slate-400">
+                <div className="flex items-center gap-2 px-4 py-2.5 bg-slate-50 border-b border-slate-100 text-[13px] text-slate-400">
                   <span>💡 Click</span>
                   <span className="font-mono font-semibold text-blue-600 underline cursor-default">Error Code</span>
                   <span>→ fixes for all URLs &nbsp;|&nbsp; Click a</span>
@@ -630,7 +630,7 @@ export default function Home() {
                                 <div className="flex flex-col gap-1">
                                   {urls.map((u, j) => (
                                     <span key={j} onClick={() => openFixes(err, u)}
-                                      className="text-sky-500 text-[11px] truncate max-w-[200px] font-mono cursor-pointer hover:underline select-none"
+                                      className="text-sky-500 text-[13px] truncate max-w-[200px] font-mono cursor-pointer hover:underline select-none"
                                       title={`Load fixes for ${u}`}>{u}</span>
                                   ))}
                                 </div>
@@ -663,7 +663,7 @@ export default function Home() {
                                     className="w-4 h-4 accent-blue-600 cursor-pointer"
                                   />
                                   {processedByErrId === err.Id && (
-                                    <span className="text-[10px] text-red-500 whitespace-nowrap">Fill Processed By first</span>
+                                    <span className="text-[12px] text-red-500 whitespace-nowrap">Fill Processed By first</span>
                                   )}
                                 </div>
                               </td>
@@ -704,10 +704,10 @@ export default function Home() {
                           </div>
                           <div className="flex items-center gap-3 mt-1.5 flex-wrap">
                             <StatusBadge code={page.StatusCode} />
-                            {page.WordCount != null && <span className="text-[10px] text-slate-400 font-mono">{page.WordCount} words</span>}
-                            {page.InternalLinks != null && <span className="text-[10px] text-slate-400 font-mono">{page.InternalLinks} int. links</span>}
-                            {page.ExternalLinks != null && <span className="text-[10px] text-slate-400 font-mono">{page.ExternalLinks} ext. links</span>}
-                            {page.IsAddressed && <span className="text-[10px] bg-emerald-50 text-emerald-600 border border-emerald-200 px-2 py-0.5 rounded-full font-semibold">✓ Addressed</span>}
+                            {page.WordCount != null && <span className="text-[12px] text-slate-400 font-mono">{page.WordCount} words</span>}
+                            {page.InternalLinks != null && <span className="text-[12px] text-slate-400 font-mono">{page.InternalLinks} int. links</span>}
+                            {page.ExternalLinks != null && <span className="text-[12px] text-slate-400 font-mono">{page.ExternalLinks} ext. links</span>}
+                            {page.IsAddressed && <span className="text-[12px] bg-emerald-50 text-emerald-600 border border-emerald-200 px-2 py-0.5 rounded-full font-semibold">✓ Addressed</span>}
                           </div>
                         </div>
                         <svg className={`w-4 h-4 text-slate-400 flex-shrink-0 transition-transform ${expandedId === page.Id ? 'rotate-180' : ''}`}
@@ -721,9 +721,9 @@ export default function Home() {
                             <thead>
                               <tr>
                                 <Th className="w-32">Field</Th>
-                                <th className="text-[10px] font-bold uppercase tracking-widest text-slate-400 px-4 py-3 text-left border-b border-slate-100 bg-slate-50 w-1/2"
+                                <th className="text-[12px] font-bold uppercase tracking-widest text-slate-400 px-4 py-3 text-left border-b border-slate-100 bg-slate-50 w-1/2"
                                   style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Current Content</th>
-                                <th className="text-[10px] font-bold uppercase tracking-widest text-emerald-500 px-4 py-3 text-left border-b border-emerald-100 bg-emerald-50 w-1/2"
+                                <th className="text-[12px] font-bold uppercase tracking-widest text-emerald-500 px-4 py-3 text-left border-b border-emerald-100 bg-emerald-50 w-1/2"
                                   style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>✦ Suggested Content</th>
                               </tr>
                             </thead>
