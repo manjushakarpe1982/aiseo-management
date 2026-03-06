@@ -11,6 +11,8 @@ export interface CannibalizationError {
   Score: number | null;
   ScanCode: string | null;
   CreateTS: string | null;
+  IsProcessed: boolean | null;
+  ProcessedBy: string | null;
 }
 
 export interface CannibalizationFix {
@@ -21,6 +23,7 @@ export interface CannibalizationFix {
   ContentType: string;
   OldContent: string | null;
   SuggestedContent: string | null;
+  ProcessedBy: string | null;
 }
 
 export interface PageSEOInput {

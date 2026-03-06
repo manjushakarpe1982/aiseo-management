@@ -134,13 +134,35 @@ function FixesModal({
   loading: boolean;
   onClose: () => void;
 }) {
+  const [processedByMap, setProcessedByMap] = useState<Record<number, string>>({});
+  const [savingMap, setSavingMap] = useState<Record<number, boolean>>({});
+
+  useEffect(() => {
+    const map: Record<number, string> = {};
+    fixes.forEach(f => { map[f.Id] = f.ProcessedBy ?? ''; });
+    setProcessedByMap(map);
+  }, [fixes]);
+
+  async function saveFixProcessedBy(fixId: number, value: string) {
+    setSavingMap(prev => ({ ...prev, [fixId]: true }));
+    try {
+      await fetch('/api/fixes', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: fixId, processedBy: value }),
+      });
+    } finally {
+      setSavingMap(prev => ({ ...prev, [fixId]: false }));
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(15,23,42,0.5)' }}>
       {/* Backdrop */}
       <div className="absolute inset-0" onClick={onClose} />
 
       {/* Modal */}
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[85vh] flex flex-col overflow-hidden">
+      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[85vh] flex flex-col overflow-hidden">
 
         {/* Modal Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-blue-50">
@@ -172,7 +194,7 @@ function FixesModal({
           {loading ? <Spinner /> : fixes.length === 0 ? (
             <EmptyState icon="📭" message="No suggested fixes available for this selection." />
           ) : (
-            <table className="w-full border-collapse min-w-[700px]">
+            <table className="w-full border-collapse min-w-[900px]">
               <thead className="sticky top-0">
                 <tr>
                   <Th className="w-10">#</Th>
@@ -180,6 +202,7 @@ function FixesModal({
                   <Th className="w-32">Content Type</Th>
                   <Th>Current Content</Th>
                   <Th className="text-emerald-500 bg-emerald-50">✦ Suggested Content</Th>
+                  <Th className="w-44">Processed By</Th>
                 </tr>
               </thead>
               <tbody>
@@ -195,6 +218,22 @@ function FixesModal({
                     </td>
                     <td className="px-4 py-4 text-xs text-emerald-600 leading-relaxed align-top font-medium bg-emerald-50/50 max-w-xs">
                       {fix.SuggestedContent || <span className="text-slate-300 italic">—</span>}
+                    </td>
+                    <td className="px-4 py-4 align-top">
+                      <div className="flex flex-col gap-1">
+                        <input
+                          type="text"
+                          placeholder="Enter name…"
+                          value={processedByMap[fix.Id] ?? ''}
+                          onChange={e => setProcessedByMap(prev => ({ ...prev, [fix.Id]: e.target.value }))}
+                          onBlur={e => { if (e.target.value.trim()) saveFixProcessedBy(fix.Id, e.target.value.trim()); }}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all placeholder:text-slate-300"
+                        />
+                        {savingMap[fix.Id] && <span className="text-[10px] text-slate-400">Saving…</span>}
+                        {!savingMap[fix.Id] && processedByMap[fix.Id]?.trim() && (processedByMap[fix.Id] === (fix.ProcessedBy ?? '')) && (
+                          <span className="text-[10px] text-emerald-500">✓ Saved</span>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -248,6 +287,11 @@ export default function Home() {
   const [fixes, setFixes]                   = useState<CannibalizationFix[]>([]);
   const [loadingFixes, setLoadingFixes]     = useState(false);
 
+  // Processed By / Processed state for errors table
+  const [processedByMap, setProcessedByMap] = useState<Record<number, string>>({});
+  const [processedMap, setProcessedMap]     = useState<Record<number, boolean>>({});
+  const [processedByErrId, setProcessedByErrId] = useState<number | null>(null);
+
   // SEO
   const [seoInputs, setSeoInputs]           = useState<PageSEOInput[]>([]);
   const [loadingSeo, setLoadingSeo]         = useState(false);
@@ -269,7 +313,19 @@ export default function Home() {
     if (url)       params.set('url', url);
     fetch(`/api/errors?${params}`)
       .then(r => r.json())
-      .then(data => setErrors(Array.isArray(data) ? data : []))
+      .then(data => {
+        const arr = Array.isArray(data) ? data : [];
+        setErrors(arr);
+        const initPB: Record<number, string> = {};
+        const initP: Record<number, boolean> = {};
+        arr.forEach((e: CannibalizationError) => {
+          initPB[e.Id] = e.ProcessedBy ?? '';
+          initP[e.Id]  = e.IsProcessed ?? false;
+        });
+        setProcessedByMap(initPB);
+        setProcessedMap(initP);
+        setProcessedByErrId(null);
+      })
       .catch(console.error)
       .finally(() => setLoadingErrors(false));
   }
@@ -281,6 +337,7 @@ export default function Home() {
     setSelIssueType(''); setSelPriority(''); setUrlInput(''); setUrlFilter('');
     setFilterIssueTypes([]); setFilterPriorities([]);
     setErrPage(1); setSeoPage(1);
+    setProcessedByMap({}); setProcessedMap({}); setProcessedByErrId(null);
     if (!code) return;
 
     // Load filter options
@@ -317,6 +374,22 @@ export default function Home() {
   function onClearFilters() {
     setSelIssueType(''); setSelPriority(''); setUrlInput(''); setUrlFilter('');
     loadErrors(selectedScan);
+  }
+
+  // Handle Processed checkbox in errors table
+  async function handleCheckboxChange(errId: number, checked: boolean) {
+    const pb = (processedByMap[errId] ?? '').trim();
+    if (checked && !pb) {
+      setProcessedByErrId(errId);
+      return;
+    }
+    setProcessedByErrId(null);
+    setProcessedMap(prev => ({ ...prev, [errId]: checked }));
+    await fetch('/api/errors', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: errId, isProcessed: checked, processedBy: pb }),
+    }).catch(console.error);
   }
 
   // Open fixes modal
@@ -523,9 +596,19 @@ export default function Home() {
                   <EmptyState icon="✅" message="No errors match the current filters." />
                 ) : (
                   <div className="overflow-x-auto">
-                    <table className="w-full min-w-[860px] border-collapse">
+                    <table className="w-full min-w-[1100px] border-collapse">
                       <thead>
-                        <tr><Th>#</Th><Th>Code</Th><Th>Issue Type</Th><Th>Description</Th><Th>URL(s)</Th><Th>Priority</Th><Th>Score</Th></tr>
+                        <tr>
+                          <Th>#</Th>
+                          <Th>Code</Th>
+                          <Th>Issue Type</Th>
+                          <Th>Description</Th>
+                          <Th>URL(s)</Th>
+                          <Th>Priority</Th>
+                          <Th>Score</Th>
+                          <Th className="w-44">Processed By</Th>
+                          <Th className="w-24 text-center">Processed</Th>
+                        </tr>
                       </thead>
                       <tbody>
                         {pagedErrors.map((err, i) => {
@@ -554,6 +637,36 @@ export default function Home() {
                               </td>
                               <td className="px-4 py-3"><PriorityBadge priority={err.ErrorPriority} /></td>
                               <td className="px-4 py-3"><ScoreBar score={err.Score} /></td>
+
+                              {/* Processed By textbox */}
+                              <td className="px-4 py-3">
+                                <input
+                                  type="text"
+                                  placeholder="Enter name…"
+                                  value={processedByMap[err.Id] ?? ''}
+                                  onChange={e => {
+                                    setProcessedByMap(prev => ({ ...prev, [err.Id]: e.target.value }));
+                                    if (processedByErrId === err.Id) setProcessedByErrId(null);
+                                  }}
+                                  disabled={processedMap[err.Id] === true}
+                                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all placeholder:text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                                />
+                              </td>
+
+                              {/* Processed checkbox */}
+                              <td className="px-4 py-3 text-center">
+                                <div className="flex flex-col items-center gap-1">
+                                  <input
+                                    type="checkbox"
+                                    checked={processedMap[err.Id] ?? false}
+                                    onChange={e => handleCheckboxChange(err.Id, e.target.checked)}
+                                    className="w-4 h-4 accent-blue-600 cursor-pointer"
+                                  />
+                                  {processedByErrId === err.Id && (
+                                    <span className="text-[10px] text-red-500 whitespace-nowrap">Fill Processed By first</span>
+                                  )}
+                                </div>
+                              </td>
                             </tr>
                           );
                         })}
