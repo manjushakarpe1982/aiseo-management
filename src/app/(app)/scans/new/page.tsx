@@ -68,14 +68,18 @@ function URLSelector({
     return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b));
   }, [filtered]);
 
+  // Derive full objects for selected IDs (for the right panel)
+  const selectedObjects = useMemo(
+    () => urls.filter((u) => selected.has(u.URLID)),
+    [urls, selected]
+  );
+
   function toggleAll() {
     if (filtered.every((u) => selected.has(u.URLID))) {
-      // Deselect all filtered
       const next = new Set(selected);
       filtered.forEach((u) => next.delete(u.URLID));
       onChange(next);
     } else {
-      // Select all filtered
       const next = new Set(selected);
       filtered.forEach((u) => next.add(u.URLID));
       onChange(next);
@@ -93,6 +97,10 @@ function URLSelector({
     const next = new Set(selected);
     next.has(id) ? next.delete(id) : next.add(id);
     onChange(next);
+  }
+
+  function clearAll() {
+    onChange(new Set());
   }
 
   if (loading) {
@@ -128,88 +136,129 @@ function URLSelector({
   const allFilteredSelected = filtered.length > 0 && filtered.every((u) => selected.has(u.URLID));
 
   return (
-    <div className="space-y-3">
-      {/* Search + select-all */}
-      <div className="flex gap-2 items-center">
-        <div className="relative flex-1">
-          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search URLs…"
-            className="w-full pl-9 pr-3 py-2 rounded-xl border border-border bg-surface2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
-          />
+    <div className="grid grid-cols-2 gap-4">
+
+      {/* ── LEFT: URL picker ─────────────────────────────────────────────── */}
+      <div className="space-y-2">
+        {/* Search + select-all */}
+        <div className="flex gap-2 items-center">
+          <div className="relative flex-1">
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search URLs…"
+              className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-border bg-surface2 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={toggleAll}
+            className="text-xs px-2.5 py-1.5 rounded-lg border border-border text-ink-2 hover:bg-surface2 whitespace-nowrap transition-colors"
+          >
+            {allFilteredSelected ? 'Deselect All' : 'Select All'}
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={toggleAll}
-          className="text-xs px-3 py-2 rounded-xl border border-border text-ink-2 hover:bg-surface2 whitespace-nowrap transition-colors"
-        >
-          {allFilteredSelected ? 'Deselect All' : 'Select All'}
-        </button>
-      </div>
 
-      {/* Selected count */}
-      {selected.size > 0 && (
-        <p className="text-xs text-primary font-semibold">
-          {selected.size} URL{selected.size !== 1 ? 's' : ''} selected
-        </p>
-      )}
-
-      {/* Groups */}
-      <div className="max-h-72 overflow-y-auto rounded-xl border border-border bg-surface2 divide-y divide-border">
-        {grouped.map(([cluster, groupURLs]) => {
-          const groupAllSelected = groupURLs.every((u) => selected.has(u.URLID));
-          const groupSomeSelected = groupURLs.some((u) => selected.has(u.URLID));
-          return (
-            <div key={cluster}>
-              {/* Cluster header */}
-              <div
-                className="flex items-center gap-2 px-3 py-2 bg-surface sticky top-0 border-b border-border cursor-pointer select-none hover:bg-surface2 transition-colors"
-                onClick={() => toggleGroup(groupURLs)}
-              >
-                <input
-                  type="checkbox"
-                  readOnly
-                  checked={groupAllSelected}
-                  ref={(el) => { if (el) el.indeterminate = !groupAllSelected && groupSomeSelected; }}
-                  className="accent-primary rounded w-3.5 h-3.5 flex-shrink-0"
-                />
-                <span className="text-xs font-semibold text-ink uppercase tracking-wide">{cluster}</span>
-                <span className="text-[10px] text-muted ml-auto">{groupURLs.length}</span>
-              </div>
-              {/* URLs in group */}
-              {groupURLs.map((u) => (
-                <label
-                  key={u.URLID}
-                  className="flex items-center gap-3 px-4 py-2 cursor-pointer hover:bg-primary/5 transition-colors"
+        {/* Grouped checkbox list */}
+        <div className="h-72 overflow-y-auto rounded-xl border border-border bg-surface2 divide-y divide-border">
+          {grouped.map(([cluster, groupURLs]) => {
+            const groupAllSelected = groupURLs.every((u) => selected.has(u.URLID));
+            const groupSomeSelected = groupURLs.some((u) => selected.has(u.URLID));
+            return (
+              <div key={cluster}>
+                {/* Cluster header */}
+                <div
+                  className="flex items-center gap-2 px-3 py-1.5 bg-surface sticky top-0 border-b border-border cursor-pointer select-none hover:bg-surface2 transition-colors"
+                  onClick={() => toggleGroup(groupURLs)}
                 >
                   <input
                     type="checkbox"
-                    checked={selected.has(u.URLID)}
-                    onChange={() => toggle(u.URLID)}
-                    className="accent-primary rounded w-3.5 h-3.5 flex-shrink-0"
+                    readOnly
+                    checked={groupAllSelected}
+                    ref={(el) => { if (el) el.indeterminate = !groupAllSelected && groupSomeSelected; }}
+                    className="accent-primary rounded w-3 h-3 flex-shrink-0"
                   />
-                  <div className="min-w-0">
-                    <p className="font-mono text-xs text-ink truncate">{pathOf(u.PageURL)}</p>
-                    {u.PageTitle && (
-                      <p className="text-[10px] text-muted truncate">{u.PageTitle}</p>
-                    )}
-                  </div>
-                  {u.ScanRunCount > 0 && (
-                    <span className="ml-auto text-[10px] text-muted whitespace-nowrap flex-shrink-0">
-                      {u.ScanRunCount} scan{u.ScanRunCount !== 1 ? 's' : ''}
+                  <span className="text-[10px] font-semibold text-ink uppercase tracking-wide">{cluster}</span>
+                  <span className="text-[10px] text-muted ml-auto">{groupURLs.length}</span>
+                </div>
+                {/* URLs in group */}
+                {groupURLs.map((u) => (
+                  <label
+                    key={u.URLID}
+                    className="flex items-start gap-2.5 px-3 py-1.5 cursor-pointer hover:bg-primary/5 transition-colors"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selected.has(u.URLID)}
+                      onChange={() => toggle(u.URLID)}
+                      className="accent-primary rounded w-3 h-3 flex-shrink-0 mt-0.5"
+                    />
+                    <span className="font-mono text-[11px] text-ink leading-tight break-all">
+                      {pathOf(u.PageURL)}
                     </span>
-                  )}
-                </label>
-              ))}
-            </div>
-          );
-        })}
+                  </label>
+                ))}
+              </div>
+            );
+          })}
+        </div>
       </div>
+
+      {/* ── RIGHT: Selected URLs panel ───────────────────────────────────── */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-semibold text-ink">
+            Selected
+            <span className="ml-1.5 px-1.5 py-0.5 bg-primary text-white rounded-full text-[10px] font-bold">
+              {selected.size}
+            </span>
+          </span>
+          {selected.size > 0 && (
+            <button
+              type="button"
+              onClick={clearAll}
+              className="text-[11px] text-muted hover:text-danger transition-colors"
+            >
+              Clear all
+            </button>
+          )}
+        </div>
+
+        <div className="h-72 overflow-y-auto rounded-xl border border-border bg-surface2 divide-y divide-border">
+          {selected.size === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-center px-4 py-8 text-muted">
+              <svg className="w-8 h-8 mb-2 text-border" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+              </svg>
+              <p className="text-xs">No URLs selected yet.</p>
+              <p className="text-[11px] mt-0.5">Check URLs from the list on the left.</p>
+            </div>
+          ) : (
+            selectedObjects.map((u) => (
+              <div key={u.URLID} className="flex items-start gap-2 px-3 py-1.5 group hover:bg-danger-light/50 transition-colors">
+                <span className="font-mono text-[11px] text-ink leading-tight break-all flex-1">
+                  {pathOf(u.PageURL)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => toggle(u.URLID)}
+                  title="Remove"
+                  className="w-4 h-4 flex-shrink-0 mt-0.5 flex items-center justify-center rounded text-muted hover:text-danger transition-colors opacity-0 group-hover:opacity-100"
+                >
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
     </div>
   );
 }
