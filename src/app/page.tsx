@@ -1,972 +1,184 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
-import type { CannibalizationError, CannibalizationFix, PageSEOInput } from '@/lib/types';
+import { useEffect, useState } from 'react';
+import Link from 'next/link';
+import type { DashboardStats } from '@/lib/types';
+import { ScanStatusBadge } from '@/components/Badge';
 
-type Tab = 'cannibalization' | 'seo';
-const PAGE_SIZE = 10;
-
-// ─── UI Helpers ───────────────────────────────────────────────────
-
-function PriorityBadge({ priority }: { priority: number | null }) {
-  const map: Record<number, { label: string; cls: string }> = {
-    1: { label: 'Low',    cls: 'bg-green-50 text-green-600 border-green-200' },
-    2: { label: 'Medium', cls: 'bg-amber-50 text-amber-600 border-amber-200' },
-    3: { label: 'High',   cls: 'bg-red-50 text-red-600 border-red-200' },
-  };
-  const p = map[priority ?? 1] ?? map[1];
-  return <span className={`inline-block text-[12px] font-semibold uppercase tracking-wider px-2.5 py-0.5 rounded-full border ${p.cls}`}>{p.label}</span>;
-}
-
-function ScoreBar({ score }: { score: number | null }) {
-  const pct = Math.min(100, score ?? 0);
-  const color = pct >= 75 ? '#EF4444' : pct >= 45 ? '#F59E0B' : '#10B981';
-  return (
-    <div className="flex items-center gap-2">
-      <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-        <div className="h-full rounded-full" style={{ width: `${pct}%`, background: color }} />
-      </div>
-      <span className="text-slate-400 text-xs font-mono">{score ?? '—'}</span>
-    </div>
-  );
-}
-
-function Tag({ children, variant = 'blue' }: { children: React.ReactNode; variant?: 'blue' | 'green' }) {
-  const cls = variant === 'blue'
-    ? 'bg-blue-50 text-blue-600 border-blue-200'
-    : 'bg-emerald-50 text-emerald-600 border-emerald-200';
-  return <span className={`inline-block text-[12px] font-mono font-medium px-2 py-0.5 rounded border whitespace-nowrap ${cls}`}>{children}</span>;
-}
-
-function StatusBadge({ code }: { code: number | null }) {
-  if (!code) return <span className="text-slate-400 text-xs">—</span>;
-  const cls = code < 300 ? 'bg-emerald-50 text-emerald-600' : code < 400 ? 'bg-amber-50 text-amber-600' : 'bg-red-50 text-red-600';
-  return <span className={`text-[12px] font-mono font-semibold px-2 py-0.5 rounded ${cls}`}>{code}</span>;
-}
-
-function EmptyState({ icon, message }: { icon: string; message: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center gap-3 py-16 text-slate-400 text-sm text-center">
-      <span className="text-4xl">{icon}</span>
-      <p className="max-w-[260px] leading-relaxed">{message}</p>
-    </div>
-  );
-}
-
-function Spinner() {
-  return (
-    <div className="flex items-center justify-center py-16">
-      <div className="w-7 h-7 border-2 border-blue-100 border-t-blue-500 rounded-full animate-spin" />
-    </div>
-  );
-}
-
-function SectionTitle({ title, count }: { title: string; count?: number }) {
-  return (
-    <div className="flex items-center gap-3 mb-3">
-      <span className="text-[13px] font-bold uppercase tracking-widest text-slate-400" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>{title}</span>
-      {count !== undefined && (
-        <span className="text-[12px] font-semibold bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full border border-blue-100">{count}</span>
-      )}
-      <div className="flex-1 h-px bg-slate-100" />
-    </div>
-  );
-}
-
-function Th({ children, className = '' }: { children: React.ReactNode; className?: string }) {
-  return (
-    <th style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}
-      className={`text-[12px] font-bold uppercase tracking-widest text-slate-400 px-4 py-3 text-left whitespace-nowrap bg-slate-50 border-b border-slate-100 ${className}`}>
-      {children}
-    </th>
-  );
-}
-
-// ─── Pagination ───────────────────────────────────────────────────
-function Pagination({ page, total, pageSize, onChange }: { page: number; total: number; pageSize: number; onChange: (p: number) => void }) {
-  const totalPages = Math.ceil(total / pageSize);
-  if (totalPages <= 1) return null;
-  const pages = Array.from({ length: totalPages }, (_, i) => i + 1);
-  const visible = pages.filter(p => p === 1 || p === totalPages || Math.abs(p - page) <= 1);
-
-  return (
-    <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 bg-slate-50">
-      <span className="text-xs text-slate-400">
-        Showing {Math.min((page - 1) * pageSize + 1, total)}–{Math.min(page * pageSize, total)} of {total}
-      </span>
-      <div className="flex items-center gap-1">
-        <button
-          onClick={() => onChange(page - 1)} disabled={page === 1}
-          className="px-2.5 py-1.5 rounded text-xs font-medium text-slate-500 hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
-          ← Prev
-        </button>
-        {visible.map((p, i) => {
-          const prev = visible[i - 1];
-          return (
-            <span key={p} className="flex items-center gap-1">
-              {prev && p - prev > 1 && <span className="text-slate-300 px-1">…</span>}
-              <button
-                onClick={() => onChange(p)}
-                className={`w-8 h-8 rounded text-xs font-medium transition-colors
-                  ${p === page ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-200'}`}>
-                {p}
-              </button>
-            </span>
-          );
-        })}
-        <button
-          onClick={() => onChange(page + 1)} disabled={page === totalPages}
-          className="px-2.5 py-1.5 rounded text-xs font-medium text-slate-500 hover:bg-slate-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
-          Next →
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ─── Fixes Popup Modal ────────────────────────────────────────────
-function FixesModal({
-  error, fixUrl, fixes, loading, onClose
+function StatCard({
+  label,
+  value,
+  sub,
+  color,
+  icon,
 }: {
-  error: CannibalizationError;
-  fixUrl: string | null;
-  fixes: CannibalizationFix[];
-  loading: boolean;
-  onClose: () => void;
+  label: string;
+  value: number | string;
+  sub?: string;
+  color: string;
+  icon: React.ReactNode;
 }) {
-  const [processedByMap, setProcessedByMap] = useState<Record<number, string>>({});
-  const [savingMap, setSavingMap] = useState<Record<number, boolean>>({});
+  return (
+    <div className="bg-surface rounded-2xl border border-border p-6 shadow-card flex items-start gap-4">
+      <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${color}`}>
+        {icon}
+      </div>
+      <div>
+        <p className="text-muted text-sm font-medium">{label}</p>
+        <p className="text-ink text-3xl font-bold font-display mt-0.5">{value}</p>
+        {sub && <p className="text-muted text-xs mt-1">{sub}</p>}
+      </div>
+    </div>
+  );
+}
+
+function fmtDate(d: string | null) {
+  if (!d) return '—';
+  return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+export default function Dashboard() {
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    const map: Record<number, string> = {};
-    fixes.forEach(f => { map[f.Id] = f.ProcessedBy ?? ''; });
-    setProcessedByMap(map);
-  }, [fixes]);
+    fetch('/api/dashboard')
+      .then((r) => r.json())
+      .then(setStats)
+      .catch(() => setError('Failed to load dashboard'));
+  }, []);
 
-  async function saveFixProcessedBy(fixId: number, value: string) {
-    setSavingMap(prev => ({ ...prev, [fixId]: true }));
-    try {
-      await fetch('/api/fixes', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: fixId, processedBy: value }),
-      });
-    } finally {
-      setSavingMap(prev => ({ ...prev, [fixId]: false }));
-    }
-  }
+  if (error) return (
+    <div className="text-danger bg-danger-light border border-red-200 rounded-xl p-4">{error}</div>
+  );
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(15,23,42,0.5)' }}>
-      {/* Backdrop */}
-      <div className="absolute inset-0" onClick={onClose} />
-
-      {/* Modal */}
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[85vh] flex flex-col overflow-hidden">
-
-        {/* Modal Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-blue-50">
-          <div className="flex flex-wrap items-center gap-3 text-sm">
-            <span className="font-bold text-blue-600 font-mono text-base">{error.Code}</span>
-            <span className="text-slate-300">|</span>
-            <span className="text-slate-600 font-medium">{error.IssueType}</span>
-            <span className="text-slate-300">|</span>
-            <span className="text-xs text-slate-500">Fixes for:</span>
-            <span className={`font-mono text-xs font-semibold ${fixUrl ? 'text-sky-600' : 'text-amber-600'}`}>
-              {fixUrl ?? '⚡ All URLs'}
-            </span>
-            {fixes.length > 0 && (
-              <span className="ml-1 text-[12px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-semibold">
-                {fixes.length} fix{fixes.length !== 1 ? 'es' : ''}
-              </span>
-            )}
-          </div>
-          <button
-            onClick={onClose}
-            className="ml-4 w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200 transition-colors text-lg font-bold flex-shrink-0"
-          >
-            ×
-          </button>
-        </div>
-
-        {/* Modal Body */}
-        <div className="flex-1 overflow-auto">
-          {loading ? <Spinner /> : fixes.length === 0 ? (
-            <EmptyState icon="📭" message="No suggested fixes available for this selection." />
-          ) : (
-            <table className="w-full border-collapse min-w-[900px]">
-              <thead className="sticky top-0">
-                <tr>
-                  <Th className="w-10">#</Th>
-                  <Th>URL</Th>
-                  <Th className="w-32">Content Type</Th>
-                  <Th>Current Content</Th>
-                  <Th className="text-emerald-500 bg-emerald-50">✦ Suggested Content</Th>
-                  <Th className="w-44">Processed By</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {fixes.map((fix, i) => (
-                  <tr key={fix.Id} className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50 transition-colors">
-                    <td className="px-4 py-4 text-slate-400 text-xs font-mono align-top">{i + 1}</td>
-                    <td className="px-4 py-4 align-top">
-                      <span className="text-sky-600 text-[13px] font-mono break-all leading-relaxed">{fix.Url || '—'}</span>
-                    </td>
-                    <td className="px-4 py-4 align-top"><Tag variant="blue">{fix.ContentType}</Tag></td>
-                    <td className="px-4 py-4 text-xs text-slate-600 leading-relaxed align-top max-w-xs">
-                      {fix.OldContent || <span className="text-slate-300 italic">—</span>}
-                    </td>
-                    <td className="px-4 py-4 text-xs text-emerald-600 leading-relaxed align-top font-medium bg-emerald-50/50 max-w-xs">
-                      {fix.SuggestedContent || <span className="text-slate-300 italic">—</span>}
-                    </td>
-                    <td className="px-4 py-4 align-top">
-                      <div className="flex flex-col gap-1">
-                        <input
-                          type="text"
-                          placeholder="Enter name…"
-                          value={processedByMap[fix.Id] ?? ''}
-                          onChange={e => setProcessedByMap(prev => ({ ...prev, [fix.Id]: e.target.value }))}
-                          onBlur={e => { if (e.target.value.trim()) saveFixProcessedBy(fix.Id, e.target.value.trim()); }}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all placeholder:text-slate-300"
-                        />
-                        {savingMap[fix.Id] && <span className="text-[12px] text-slate-400">Saving…</span>}
-                        {!savingMap[fix.Id] && processedByMap[fix.Id]?.trim() && (processedByMap[fix.Id] === (fix.ProcessedBy ?? '')) && (
-                          <span className="text-[12px] text-emerald-500">✓ Saved</span>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </div>
+  if (!stats) return (
+    <div className="flex items-center justify-center h-64">
+      <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
     </div>
   );
-}
 
-// ─── SEO Detail Modal ─────────────────────────────────────────────
-function SeoModal({ page, onClose }: { page: PageSEOInput; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(15,23,42,0.5)' }}>
-      <div className="absolute inset-0" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[85vh] flex flex-col overflow-hidden">
-
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-blue-50">
-          <div className="flex flex-wrap items-center gap-3 min-w-0">
-            <span className="font-mono text-sm font-semibold text-blue-600 truncate max-w-[420px]">{page.Url}</span>
-            {page.PageName && <span className="text-xs text-slate-500 bg-white px-2 py-0.5 rounded-full border border-slate-200">{page.PageName}</span>}
-            <StatusBadge code={page.StatusCode} />
-            {page.Priority != null && <PriorityBadge priority={page.Priority} />}
-            {page.IsAddressed && <span className="text-[12px] bg-emerald-50 text-emerald-600 border border-emerald-200 px-2 py-0.5 rounded-full font-semibold">✓ Addressed</span>}
-          </div>
-          <button
-            onClick={onClose}
-            className="ml-4 w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200 transition-colors text-lg font-bold flex-shrink-0"
-          >×</button>
+    <div className="space-y-8 animate-fade-slide">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold font-display text-ink">Dashboard</h1>
+          <p className="text-muted text-sm mt-1">AISEO Management — boldpreciousmetals.com</p>
         </div>
+        <Link
+          href="/scans/new"
+          className="flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-blue-600 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+          </svg>
+          New Scan
+        </Link>
+      </div>
 
-        {/* Body */}
-        <div className="flex-1 overflow-auto">
-          <table className="w-full border-collapse min-w-[640px]">
-            <thead className="sticky top-0">
-              <tr>
-                <Th className="w-36">Field</Th>
-                <th className="text-[12px] font-bold uppercase tracking-widest text-slate-400 px-4 py-3 text-left border-b border-slate-100 bg-slate-50 w-1/2"
-                  style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Current Content</th>
-                <th className="text-[12px] font-bold uppercase tracking-widest text-emerald-500 px-4 py-3 text-left border-b border-emerald-100 bg-emerald-50 w-1/2"
-                  style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>✦ Suggested Content</th>
+      {/* Stat cards */}
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-5">
+        <StatCard
+          label="Total Scans"
+          value={stats.totalScans}
+          color="bg-primary-light"
+          icon={
+            <svg className="w-5 h-5 text-primary" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+            </svg>
+          }
+        />
+        <StatCard
+          label="Open Issues"
+          value={stats.openIssues}
+          sub="Yet to Act"
+          color="bg-blue-50"
+          icon={
+            <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          }
+        />
+        <StatCard
+          label="High Severity Cannib."
+          value={stats.highSeverityCannibalization}
+          sub="Cannibalization — High"
+          color="bg-danger-light"
+          icon={
+            <svg className="w-5 h-5 text-danger" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+          }
+        />
+        <StatCard
+          label="High Priority Content"
+          value={stats.highPriorityImprovements}
+          sub="Content Improvements — High"
+          color="bg-warning-light"
+          icon={
+            <svg className="w-5 h-5 text-warning" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+          }
+        />
+      </div>
+
+      {/* Recent scans */}
+      <div className="bg-surface rounded-2xl border border-border shadow-card overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+          <h2 className="font-semibold font-display text-ink">Recent Scans</h2>
+          <Link href="/scans" className="text-primary text-sm font-medium hover:underline">
+            View all →
+          </Link>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border bg-surface2">
+                <th className="text-left px-6 py-3 text-muted font-medium">Name</th>
+                <th className="text-left px-4 py-3 text-muted font-medium">Status</th>
+                <th className="text-left px-4 py-3 text-muted font-medium">Started</th>
+                <th className="text-right px-4 py-3 text-muted font-medium">URLs</th>
+                <th className="text-right px-4 py-3 text-muted font-medium">Cannib.</th>
+                <th className="text-right px-6 py-3 text-muted font-medium">Content</th>
               </tr>
             </thead>
             <tbody>
-              {SEO_FIELD_PAIRS.map(({ label, old: oldKey, sug: sugKey }) => {
-                const oldVal = page[oldKey] as string | null;
-                const sugVal = page[sugKey] as string | null;
-                if (!oldVal && !sugVal) return null;
-                return (
-                  <tr key={label} className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50/50 transition-colors">
-                    <td className="px-4 py-3 align-top"><Tag variant="blue">{label}</Tag></td>
-                    <td className="px-4 py-3 text-xs text-slate-600 leading-relaxed align-top">
-                      {oldVal || <span className="text-slate-300 italic">—</span>}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-emerald-600 leading-relaxed align-top font-medium bg-emerald-50/40">
-                      {sugVal || <span className="text-slate-300 italic">—</span>}
-                    </td>
-                  </tr>
-                );
-              })}
+              {stats.recentScans.map((scan) => (
+                <tr key={scan.ScanID} className="border-b border-border/50 hover:bg-surface2 transition-colors">
+                  <td className="px-6 py-4">
+                    <Link
+                      href={`/scans/${scan.ScanID}`}
+                      className="font-medium text-ink hover:text-primary transition-colors"
+                    >
+                      {scan.ScanName}
+                    </Link>
+                    <p className="text-muted text-xs mt-0.5">#{scan.ScanID}</p>
+                  </td>
+                  <td className="px-4 py-4">
+                    <ScanStatusBadge status={scan.Status} />
+                  </td>
+                  <td className="px-4 py-4 text-muted">{fmtDate(scan.StartedAt)}</td>
+                  <td className="px-4 py-4 text-right font-mono text-sm">{scan.URLsScraped ?? '—'}</td>
+                  <td className="px-4 py-4 text-right font-mono text-sm">{scan.CannibalizationCount ?? 0}</td>
+                  <td className="px-6 py-4 text-right font-mono text-sm">{scan.ImprovementCount ?? 0}</td>
+                </tr>
+              ))}
+              {stats.recentScans.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-6 py-12 text-center text-muted">
+                    No scans yet.{' '}
+                    <Link href="/scans/new" className="text-primary hover:underline">
+                      Start one now →
+                    </Link>
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
       </div>
-    </div>
-  );
-}
-
-// ─── Status options ───────────────────────────────────────────────
-const STATUS_OPTIONS = ['Yet to check', 'Updated', 'Deferred'] as const;
-type StatusOption = typeof STATUS_OPTIONS[number];
-
-function statusSelectCls(status: string | null) {
-  const s = status ?? 'Yet to check';
-  if (s === 'Updated')  return 'bg-emerald-50 text-emerald-700 border-emerald-300 focus:border-emerald-400 focus:ring-emerald-100';
-  if (s === 'Deferred') return 'bg-amber-50 text-amber-700 border-amber-300 focus:border-amber-400 focus:ring-amber-100';
-  return 'bg-slate-50 text-slate-600 border-slate-200 focus:border-blue-400 focus:ring-blue-100';
-}
-
-// ─── SEO Field pairs ──────────────────────────────────────────────
-const SEO_FIELD_PAIRS: { label: string; old: keyof PageSEOInput; sug: keyof PageSEOInput }[] = [
-  { label: 'Meta Title',       old: 'MetaTitle',       sug: 'SuggestedMetaTitle' },
-  { label: 'Meta Description', old: 'MetaDescription', sug: 'SuggestedMetaDescription' },
-  { label: 'H1', old: 'H1', sug: 'SuggestedH1' },
-  { label: 'H2', old: 'H2', sug: 'SuggestedH2' },
-  { label: 'H3', old: 'H3', sug: 'SuggestedH3' },
-  { label: 'H4', old: 'H4', sug: 'SuggestedH4' },
-  { label: 'H5', old: 'H5', sug: 'SuggestedH5' },
-  { label: 'H6', old: 'H6', sug: 'SuggestedH6' },
-  { label: 'Content', old: 'Content', sug: 'SuggestedContent' },
-];
-
-// ═══════════════════════════════════════════════════════════════════
-// MAIN PAGE
-// ═══════════════════════════════════════════════════════════════════
-export default function Home() {
-  const [scanCodes, setScanCodes]           = useState<string[]>([]);
-  const [selectedScan, setSelectedScan]     = useState('');
-  const [activeTab, setActiveTab]           = useState<Tab>('cannibalization');
-  const [searchQuery, setSearchQuery]       = useState('');
-
-  // Cannibalization
-  const [errors, setErrors]                 = useState<CannibalizationError[]>([]);
-  const [loadingErrors, setLoadingErrors]   = useState(false);
-  const [errPage, setErrPage]               = useState(1);
-
-  // Filters
-  const [filterIssueTypes, setFilterIssueTypes] = useState<string[]>([]);
-  const [filterPriorities, setFilterPriorities] = useState<number[]>([]);
-  const [selIssueType, setSelIssueType]     = useState('');
-  const [selPriority, setSelPriority]       = useState('');
-  const [urlInput, setUrlInput]             = useState('');
-  const [urlFilter, setUrlFilter]           = useState('');
-
-  // Fixes modal
-  const [modalError, setModalError]         = useState<CannibalizationError | null>(null);
-  const [modalFixUrl, setModalFixUrl]       = useState<string | null>(null);
-  const [fixes, setFixes]                   = useState<CannibalizationFix[]>([]);
-  const [loadingFixes, setLoadingFixes]     = useState(false);
-
-  // Processed By / Status / Comments state for errors table
-  const [processedByMap, setProcessedByMap] = useState<Record<number, string>>({});
-  const [statusMap, setStatusMap]           = useState<Record<number, string>>({});
-  const [commentsMap, setCommentsMap]       = useState<Record<number, string>>({});
-  const [processedByErrId, setProcessedByErrId] = useState<number | null>(null);
-
-  // SEO
-  const [seoInputs, setSeoInputs]           = useState<PageSEOInput[]>([]);
-  const [loadingSeo, setLoadingSeo]         = useState(false);
-  const [expandedId, setExpandedId]         = useState<number | null>(null);
-  const [seoPage, setSeoPage]               = useState(1);
-  const [modalSeoPage, setModalSeoPage]     = useState<PageSEOInput | null>(null);
-
-  // SEO Processed By / Status / Comments state
-  const [seoProcessedByMap, setSeoProcessedByMap]   = useState<Record<number, string>>({});
-  const [seoStatusMap, setSeoStatusMap]             = useState<Record<number, string>>({});
-  const [seoCommentsMap, setSeoCommentsMap]         = useState<Record<number, string>>({});
-  const [seoProcessedByErrId, setSeoProcessedByErrId] = useState<number | null>(null);
-
-  // Load scan codes
-  useEffect(() => {
-    fetch('/api/scan-codes').then(r => r.json()).then(setScanCodes).catch(console.error);
-  }, []);
-
-  // Load errors (called on scan change OR filter change)
-  async function loadErrors(scanCode: string, issueType = '', priority = '', url = '') {
-    setLoadingErrors(true);
-    setErrPage(1);
-    const params = new URLSearchParams({ scanCode });
-    if (issueType) params.set('issueType', issueType);
-    if (priority)  params.set('priority', priority);
-    if (url)       params.set('url', url);
-    fetch(`/api/errors?${params}`)
-      .then(r => r.json())
-      .then(data => {
-        const arr = Array.isArray(data) ? data : [];
-        setErrors(arr);
-        const initPB: Record<number, string> = {};
-        const initS: Record<number, string>  = {};
-        const initC: Record<number, string>  = {};
-        arr.forEach((e: CannibalizationError) => {
-          initPB[e.Id] = e.ProcessedBy ?? '';
-          initS[e.Id]  = e.Status ?? 'Yet to check';
-          initC[e.Id]  = e.Comments ?? '';
-        });
-        setProcessedByMap(initPB);
-        setStatusMap(initS);
-        setCommentsMap(initC);
-        setProcessedByErrId(null);
-      })
-      .catch(console.error)
-      .finally(() => setLoadingErrors(false));
-  }
-
-  async function onScanChange(code: string) {
-    setSelectedScan(code);
-    setErrors([]); setFixes([]); setModalError(null);
-    setSeoInputs([]); setExpandedId(null); setSearchQuery('');
-    setSelIssueType(''); setSelPriority(''); setUrlInput(''); setUrlFilter('');
-    setFilterIssueTypes([]); setFilterPriorities([]);
-    setErrPage(1); setSeoPage(1);
-    setProcessedByMap({}); setStatusMap({}); setCommentsMap({}); setProcessedByErrId(null);
-    setSeoProcessedByMap({}); setSeoStatusMap({}); setSeoCommentsMap({}); setSeoProcessedByErrId(null); setModalSeoPage(null);
-    if (!code) return;
-
-    // Load filter options
-    fetch(`/api/error-filters?scanCode=${encodeURIComponent(code)}`)
-      .then(r => r.json())
-      .then(data => {
-        setFilterIssueTypes(data.issueTypes ?? []);
-        setFilterPriorities(data.priorities ?? []);
-      }).catch(console.error);
-
-    loadErrors(code);
-
-    setLoadingSeo(true);
-    fetch(`/api/seo-inputs?scanCode=${encodeURIComponent(code)}`)
-      .then(r => r.json())
-      .then(data => {
-        const arr = Array.isArray(data) ? data : [];
-        setSeoInputs(arr);
-        const initPB: Record<number, string> = {};
-        const initS:  Record<number, string>  = {};
-        const initC:  Record<number, string>  = {};
-        arr.forEach((s: PageSEOInput) => {
-          initPB[s.Id] = s.ProcessedBy ?? '';
-          initS[s.Id]  = s.Status ?? 'Yet to check';
-          initC[s.Id]  = s.Comments ?? '';
-        });
-        setSeoProcessedByMap(initPB);
-        setSeoStatusMap(initS);
-        setSeoCommentsMap(initC);
-      })
-      .catch(console.error)
-      .finally(() => setLoadingSeo(false));
-  }
-
-  // Filter change handlers
-  function onIssueTypeChange(val: string) {
-    setSelIssueType(val);
-    loadErrors(selectedScan, val, selPriority, urlFilter);
-  }
-  function onPriorityChange(val: string) {
-    setSelPriority(val);
-    loadErrors(selectedScan, selIssueType, val, urlFilter);
-  }
-  function onUrlSearch() {
-    setUrlFilter(urlInput);
-    loadErrors(selectedScan, selIssueType, selPriority, urlInput);
-  }
-  function onClearFilters() {
-    setSelIssueType(''); setSelPriority(''); setUrlInput(''); setUrlFilter('');
-    loadErrors(selectedScan);
-  }
-
-  // Handle Status dropdown in errors table
-  async function handleStatusChange(errId: number, newStatus: string) {
-    const pb = (processedByMap[errId] ?? '').trim();
-    if (newStatus !== 'Yet to check' && !pb) {
-      setProcessedByErrId(errId);
-      return;
-    }
-    setProcessedByErrId(null);
-    setStatusMap(prev => ({ ...prev, [errId]: newStatus }));
-    await fetch('/api/errors', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: errId, status: newStatus, processedBy: pb }),
-    }).catch(console.error);
-  }
-
-  // Handle Status dropdown in SEO table
-  async function handleSeoStatusChange(pageId: number, newStatus: string) {
-    const pb = (seoProcessedByMap[pageId] ?? '').trim();
-    if (newStatus !== 'Yet to check' && !pb) {
-      setSeoProcessedByErrId(pageId);
-      return;
-    }
-    setSeoProcessedByErrId(null);
-    setSeoStatusMap(prev => ({ ...prev, [pageId]: newStatus }));
-    await fetch('/api/seo-inputs', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: pageId, status: newStatus, processedBy: pb }),
-    }).catch(console.error);
-  }
-
-  // Save comments for cannibalization error on blur
-  async function saveErrComment(errId: number, value: string) {
-    await fetch('/api/errors', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id: errId,
-        status: statusMap[errId] ?? 'Yet to check',
-        processedBy: (processedByMap[errId] ?? '').trim() || null,
-        comments: value.trim() || null,
-      }),
-    }).catch(console.error);
-  }
-
-  // Save comments for SEO input on blur
-  async function saveSeoComment(pageId: number, value: string) {
-    await fetch('/api/seo-inputs', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        id: pageId,
-        status: seoStatusMap[pageId] ?? 'Yet to check',
-        processedBy: (seoProcessedByMap[pageId] ?? '').trim() || null,
-        comments: value.trim() || null,
-      }),
-    }).catch(console.error);
-  }
-
-  // Open fixes modal
-  async function openFixes(err: CannibalizationError, url?: string) {
-    setModalError(err);
-    setModalFixUrl(url ?? null);
-    setFixes([]);
-    setLoadingFixes(true);
-    const params = new URLSearchParams({
-      scanCode: err.ScanCode ?? '',
-      errorCode: err.Code,
-    });
-    if (url) params.set('url', url);
-    fetch(`/api/fixes?${params}`)
-      .then(r => r.json())
-      .then(data => setFixes(Array.isArray(data) ? data : []))
-      .catch(console.error)
-      .finally(() => setLoadingFixes(false));
-  }
-
-  // Paginated errors
-  const pagedErrors = useMemo(() => {
-    const start = (errPage - 1) * PAGE_SIZE;
-    return errors.slice(start, start + PAGE_SIZE);
-  }, [errors, errPage]);
-
-  // Filtered + paginated SEO
-  const filteredSeo = useMemo(() => {
-    if (!searchQuery.trim()) return seoInputs;
-    const q = searchQuery.toLowerCase();
-    return seoInputs.filter(s => s.Url?.toLowerCase().includes(q) || s.PageName?.toLowerCase().includes(q));
-  }, [seoInputs, searchQuery]);
-
-  const pagedSeo = useMemo(() => {
-    const start = (seoPage - 1) * PAGE_SIZE;
-    return filteredSeo.slice(start, start + PAGE_SIZE);
-  }, [filteredSeo, seoPage]);
-
-  const avgScore = errors.length
-    ? Math.round(errors.reduce((s, e) => s + (e.Score ?? 0), 0) / errors.length) : null;
-
-  const hasFilters = selIssueType || selPriority || urlFilter;
-
-  return (
-    <div className="min-h-screen bg-slate-50" style={{ fontFamily: "'Outfit', sans-serif" }}>
-
-      {/* HEADER */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
-        <div className="max-w-screen-2xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center shadow-sm">
-              <span className="text-white text-sm font-bold" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>AI</span>
-            </div>
-            <div>
-              <h1 className="text-base font-bold text-slate-800 leading-none" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-                AISEO <span className="text-blue-600">Dashboard</span>
-              </h1>
-              <p className="text-slate-400 text-[12px] mt-0.5">Cannibalization & SEO Analysis</p>
-            </div>
-          </div>
-          <span className="text-[12px] font-semibold uppercase tracking-widest px-3 py-1 rounded-full bg-blue-50 text-blue-600 border border-blue-100">Beta</span>
-        </div>
-      </header>
-
-      <div className="max-w-screen-2xl mx-auto px-6 py-6 flex flex-col gap-5">
-
-        {/* SCAN + GLOBAL SEARCH */}
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4 flex flex-wrap items-center gap-4">
-          <div className="flex items-center gap-3 flex-1 min-w-[240px]">
-            <label className="text-[13px] font-bold uppercase tracking-widest text-slate-400 whitespace-nowrap"
-              style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Scan Code</label>
-            <select
-              value={selectedScan}
-              onChange={e => onScanChange(e.target.value)}
-              className="flex-1 max-w-xs bg-slate-50 text-slate-800 border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all cursor-pointer"
-            >
-              <option value="">— Select a Scan —</option>
-              {scanCodes.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
-
-          {selectedScan && activeTab === 'seo' && (
-            <div className="relative flex-1 min-w-[200px] max-w-sm">
-              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-              <input type="text" placeholder="Search URLs…" value={searchQuery}
-                onChange={e => { setSearchQuery(e.target.value); setSeoPage(1); }}
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg pl-9 pr-8 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all placeholder:text-slate-400"
-              />
-              {searchQuery && (
-                <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-lg">×</button>
-              )}
-            </div>
-          )}
-
-          {selectedScan && !loadingErrors && (
-            <div className="flex gap-2 ml-auto flex-wrap">
-              {[
-                { label: 'Errors',    value: errors.length,    cls: 'bg-red-50 text-red-600 border-red-100' },
-                { label: 'Avg Score', value: avgScore,         cls: 'bg-amber-50 text-amber-600 border-amber-100' },
-                { label: 'SEO Pages', value: seoInputs.length, cls: 'bg-blue-50 text-blue-600 border-blue-100' },
-              ].map(({ label, value, cls }) => (
-                <div key={label} className={`text-[13px] px-3 py-1.5 rounded-full border font-medium ${cls}`}>
-                  {label}: <span className="font-bold">{value ?? '—'}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* TABS */}
-        {selectedScan && (
-          <div className="flex gap-1 bg-white border border-slate-200 rounded-xl p-1 w-fit shadow-sm">
-            {([
-              { id: 'cannibalization' as Tab, label: 'Cannibalization Errors', icon: '⚠️', count: errors.length },
-              { id: 'seo'            as Tab, label: 'SEO Errors',              icon: '🔍', count: seoInputs.length },
-            ]).map(tab => (
-              <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-semibold transition-all
-                  ${activeTab === tab.id ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'}`}
-                style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}
-              >
-                <span>{tab.icon}</span>
-                {tab.label}
-                <span className={`text-[12px] font-mono px-1.5 py-0.5 rounded-full ${activeTab === tab.id ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-400'}`}>
-                  {tab.count}
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* ══ TAB: CANNIBALIZATION ══ */}
-        {selectedScan && activeTab === 'cannibalization' && (
-          <div className="flex flex-col gap-4 animate-fade-slide">
-
-            {/* FILTERS ROW */}
-            <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4 flex flex-wrap items-end gap-3">
-              <div className="flex flex-col gap-1 min-w-[180px]">
-                <label className="text-[12px] font-bold uppercase tracking-widest text-slate-400"
-                  style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Issue Type</label>
-                <select value={selIssueType} onChange={e => onIssueTypeChange(e.target.value)}
-                  className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all cursor-pointer">
-                  <option value="">All Issue Types</option>
-                  {filterIssueTypes.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </div>
-
-              <div className="flex flex-col gap-1 min-w-[140px]">
-                <label className="text-[12px] font-bold uppercase tracking-widest text-slate-400"
-                  style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Priority</label>
-                <select value={selPriority} onChange={e => onPriorityChange(e.target.value)}
-                  className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all cursor-pointer">
-                  <option value="">All Priorities</option>
-                  {filterPriorities.map(p => (
-                    <option key={p} value={p}>{p === 3 ? 'High' : p === 2 ? 'Medium' : 'Low'}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex flex-col gap-1 flex-1 min-w-[200px]">
-                <label className="text-[12px] font-bold uppercase tracking-widest text-slate-400"
-                  style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>URL Search</label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="Enter URL or keyword…"
-                    value={urlInput}
-                    onChange={e => setUrlInput(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && onUrlSearch()}
-                    className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all placeholder:text-slate-400"
-                  />
-                  <button onClick={onUrlSearch}
-                    className="px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 transition-colors whitespace-nowrap"
-                    style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-                    Search
-                  </button>
-                </div>
-              </div>
-
-              {hasFilters && (
-                <button onClick={onClearFilters}
-                  className="px-3 py-2 text-xs font-semibold text-slate-500 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors self-end">
-                  ✕ Clear Filters
-                </button>
-              )}
-            </div>
-
-            {/* ERRORS TABLE */}
-            <section>
-              <SectionTitle title="Cannibalization Errors" count={errors.length} />
-              <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-
-                <div className="flex items-center gap-2 px-4 py-2.5 bg-slate-50 border-b border-slate-100 text-[13px] text-slate-400">
-                  <span>💡 Click</span>
-                  <span className="font-mono font-semibold text-blue-600 underline cursor-default">Error Code</span>
-                  <span>→ fixes for all URLs &nbsp;|&nbsp; Click a</span>
-                  <span className="font-mono text-sky-600 underline cursor-default">URL</span>
-                  <span>→ fixes for that URL only</span>
-                </div>
-
-                {loadingErrors ? <Spinner /> : pagedErrors.length === 0 ? (
-                  <EmptyState icon="✅" message="No errors match the current filters." />
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full min-w-[1100px] border-collapse">
-                      <thead>
-                        <tr>
-                          <Th>#</Th>
-                          <Th>Code</Th>
-                          <Th>Issue Type</Th>
-                          <Th>Description</Th>
-                          <Th>URL(s)</Th>
-                          <Th>Priority</Th>
-                          <Th>Score</Th>
-                          <Th className="w-44">Processed By</Th>
-                          <Th className="w-36">Status</Th>
-                          <Th className="w-52">Comments</Th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {pagedErrors.map((err, i) => {
-                          const urls = [err.Url1, err.Url2, err.Url3, err.Url4].filter(Boolean) as string[];
-                          const rowNum = (errPage - 1) * PAGE_SIZE + i + 1;
-                          return (
-                            <tr key={err.Id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors text-sm">
-                              <td className="px-4 py-3 text-slate-400 text-xs font-mono">{rowNum}</td>
-                              <td
-                                onClick={() => openFixes(err)}
-                                className="px-4 py-3 font-mono font-semibold text-blue-600 text-xs whitespace-nowrap cursor-pointer hover:underline select-none"
-                                title="Load fixes for all URLs"
-                              >
-                                {err.Code}
-                              </td>
-                              <td className="px-4 py-3 font-medium text-slate-700 max-w-[180px]">{err.IssueType || '—'}</td>
-                              <td className="px-4 py-3 text-slate-500 text-xs max-w-[240px] leading-relaxed">{err.Description || '—'}</td>
-                              <td className="px-4 py-3">
-                                <div className="flex flex-col gap-1">
-                                  {urls.map((u, j) => (
-                                    <span key={j} onClick={() => openFixes(err, u)}
-                                      className="text-sky-500 text-[13px] truncate max-w-[200px] font-mono cursor-pointer hover:underline select-none"
-                                      title={`Load fixes for ${u}`}>{u}</span>
-                                  ))}
-                                </div>
-                              </td>
-                              <td className="px-4 py-3"><PriorityBadge priority={err.ErrorPriority} /></td>
-                              <td className="px-4 py-3"><ScoreBar score={err.Score} /></td>
-
-                              {/* Processed By textbox */}
-                              <td className="px-4 py-3">
-                                <input
-                                  type="text"
-                                  placeholder="Enter name…"
-                                  value={processedByMap[err.Id] ?? ''}
-                                  onChange={e => {
-                                    setProcessedByMap(prev => ({ ...prev, [err.Id]: e.target.value }));
-                                    if (processedByErrId === err.Id) setProcessedByErrId(null);
-                                  }}
-                                  disabled={(statusMap[err.Id] ?? 'Yet to check') !== 'Yet to check'}
-                                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all placeholder:text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                                />
-                              </td>
-
-                              {/* Status dropdown */}
-                              <td className="px-4 py-3">
-                                <div className="flex flex-col gap-1">
-                                  <select
-                                    value={statusMap[err.Id] ?? 'Yet to check'}
-                                    onChange={e => handleStatusChange(err.Id, e.target.value)}
-                                    className={`w-full border rounded-lg px-2 py-1.5 text-xs outline-none focus:ring-2 transition-all cursor-pointer ${statusSelectCls(statusMap[err.Id] ?? null)}`}
-                                  >
-                                    {STATUS_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                                  </select>
-                                  {processedByErrId === err.Id && (
-                                    <span className="text-[12px] text-red-500 whitespace-nowrap">Fill Processed By first</span>
-                                  )}
-                                </div>
-                              </td>
-
-                              {/* Comments textarea */}
-                              <td className="px-4 py-3">
-                                <textarea
-                                  rows={2}
-                                  placeholder="Add comments…"
-                                  value={commentsMap[err.Id] ?? ''}
-                                  onChange={e => setCommentsMap(prev => ({ ...prev, [err.Id]: e.target.value }))}
-                                  onBlur={e => saveErrComment(err.Id, e.target.value)}
-                                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all placeholder:text-slate-300 resize-none"
-                                />
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-                <Pagination page={errPage} total={errors.length} pageSize={PAGE_SIZE} onChange={setErrPage} />
-              </div>
-            </section>
-          </div>
-        )}
-
-        {/* ══ TAB: SEO ERRORS ══ */}
-        {selectedScan && activeTab === 'seo' && (
-          <div className="flex flex-col gap-4 animate-fade-slide">
-            <SectionTitle title="SEO Page Analysis" count={filteredSeo.length} />
-            <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-              {loadingSeo ? <Spinner /> : pagedSeo.length === 0 ? (
-                <EmptyState icon="🔍" message={searchQuery ? 'No pages match your search.' : 'No SEO data found for this scan.'} />
-              ) : (
-                <>
-                  <div className="overflow-x-auto">
-                    <table className="w-full min-w-[1100px] border-collapse">
-                      <thead>
-                        <tr>
-                          <Th>#</Th>
-                          <Th>URL</Th>
-                          <Th>Page Name</Th>
-                          <Th className="w-20">Status</Th>
-                          <Th className="w-20">Priority</Th>
-                          <Th className="w-20">Words</Th>
-                          <Th className="w-44">Processed By</Th>
-                          <Th className="w-36">Status</Th>
-                          <Th className="w-52">Comments</Th>
-                          <Th className="w-20 text-center">Detail</Th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {pagedSeo.map((page, i) => {
-                          const rowNum = (seoPage - 1) * PAGE_SIZE + i + 1;
-                          return (
-                            <tr key={page.Id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors text-sm">
-                              <td className="px-4 py-3 text-slate-400 text-xs font-mono">{rowNum}</td>
-                              <td className="px-4 py-3 max-w-[260px]">
-                                <span className="font-mono text-[13px] text-blue-600 truncate block">{page.Url}</span>
-                              </td>
-                              <td className="px-4 py-3 text-slate-500 text-xs max-w-[160px] truncate">{page.PageName || '—'}</td>
-                              <td className="px-4 py-3"><StatusBadge code={page.StatusCode} /></td>
-                              <td className="px-4 py-3"><PriorityBadge priority={page.Priority} /></td>
-                              <td className="px-4 py-3 text-slate-400 text-xs font-mono">{page.WordCount ?? '—'}</td>
-
-                              {/* Processed By textbox */}
-                              <td className="px-4 py-3">
-                                <input
-                                  type="text"
-                                  placeholder="Enter name…"
-                                  value={seoProcessedByMap[page.Id] ?? ''}
-                                  onChange={e => {
-                                    setSeoProcessedByMap(prev => ({ ...prev, [page.Id]: e.target.value }));
-                                    if (seoProcessedByErrId === page.Id) setSeoProcessedByErrId(null);
-                                  }}
-                                  disabled={(seoStatusMap[page.Id] ?? 'Yet to check') !== 'Yet to check'}
-                                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all placeholder:text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                                />
-                              </td>
-
-                              {/* Status dropdown */}
-                              <td className="px-4 py-3">
-                                <div className="flex flex-col gap-1">
-                                  <select
-                                    value={seoStatusMap[page.Id] ?? 'Yet to check'}
-                                    onChange={e => handleSeoStatusChange(page.Id, e.target.value)}
-                                    className={`w-full border rounded-lg px-2 py-1.5 text-xs outline-none focus:ring-2 transition-all cursor-pointer ${statusSelectCls(seoStatusMap[page.Id] ?? null)}`}
-                                  >
-                                    {STATUS_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                                  </select>
-                                  {seoProcessedByErrId === page.Id && (
-                                    <span className="text-[12px] text-red-500 whitespace-nowrap">Fill Processed By first</span>
-                                  )}
-                                </div>
-                              </td>
-
-                              {/* Comments textarea */}
-                              <td className="px-4 py-3">
-                                <textarea
-                                  rows={2}
-                                  placeholder="Add comments…"
-                                  value={seoCommentsMap[page.Id] ?? ''}
-                                  onChange={e => setSeoCommentsMap(prev => ({ ...prev, [page.Id]: e.target.value }))}
-                                  onBlur={e => saveSeoComment(page.Id, e.target.value)}
-                                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all placeholder:text-slate-300 resize-none"
-                                />
-                              </td>
-
-                              {/* Detail popup button */}
-                              <td className="px-4 py-3 text-center">
-                                <button
-                                  onClick={() => setModalSeoPage(page)}
-                                  className="px-3 py-1 text-xs font-semibold bg-blue-50 text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
-                                  style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}
-                                >
-                                  View
-                                </button>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                  <Pagination page={seoPage} total={filteredSeo.length} pageSize={PAGE_SIZE} onChange={setSeoPage} />
-                </>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* PLACEHOLDER */}
-        {!selectedScan && (
-          <div className="bg-white border border-slate-200 rounded-xl shadow-sm">
-            <EmptyState icon="🔍" message="Select a scan code above to view cannibalization errors and SEO analysis." />
-          </div>
-        )}
-
-      </div>
-
-      {/* FIXES MODAL */}
-      {modalError && (
-        <FixesModal
-          error={modalError}
-          fixUrl={modalFixUrl}
-          fixes={fixes}
-          loading={loadingFixes}
-          onClose={() => { setModalError(null); setFixes([]); setModalFixUrl(null); }}
-        />
-      )}
-
-      {/* SEO DETAIL MODAL */}
-      {modalSeoPage && (
-        <SeoModal
-          page={modalSeoPage}
-          onClose={() => setModalSeoPage(null)}
-        />
-      )}
-
     </div>
   );
 }

@@ -1,15 +1,22 @@
 import sql from 'mssql';
 
 const config: sql.config = {
-  server: process.env.DB_SERVER || 'localhost',
-  port: parseInt(process.env.DB_PORT || '1433'),
-  database: process.env.DB_DATABASE,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
+  server: process.env.DB_SERVER || '106.201.231.27',
+  port: parseInt(process.env.DB_PORT || '58815'),
+  database: process.env.DB_DATABASE || 'BPMStagging',
+  user: process.env.DB_USER || 'sa',
+  password: process.env.DB_PASSWORD || 'ash@2011',
   options: {
-   encrypt: true,
+    encrypt: true,
     trustServerCertificate: true,
     enableArithAbort: true,
+    connectTimeout: 30000,
+    requestTimeout: 60000,
+  },
+  pool: {
+    max: 10,
+    min: 0,
+    idleTimeoutMillis: 30000,
   },
 };
 

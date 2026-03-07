@@ -1,55 +1,141 @@
-export interface CannibalizationError {
-  Id: number;
-  Code: string;
-  Description: string | null;
-  IssueType: string | null;
-  Url1: string | null;
-  Url2: string | null;
-  Url3: string | null;
-  Url4: string | null;
-  ErrorPriority: number | null;
-  Score: number | null;
-  ScanCode: string | null;
-  CreateTS: string | null;
-  Status: string | null;
-  ProcessedBy: string | null;
-  Comments: string | null;
+// ─── Scans ───────────────────────────────────────────────────────────────────
+
+export interface Scan {
+  ScanID: number;
+  RunID: string | null;
+  ScanName: string;
+  StartedAt: string | null;
+  EndedAt: string | null;
+  StartedByUserID: number | null;
+  TotalURLs: number | null;
+  URLsScraped: number | null;
+  TreesAnalysed: number | null;
+  Status: 'Running' | 'Completed' | 'Failed';
+  CannibalizationPromptID: number | null;
+  ContentPromptID: number | null;
+  ErrorLog: string | null;
+  Notes: string | null;
+  CreatedAt: string | null;
+  // joined counts
+  CannibalizationCount?: number;
+  ImprovementCount?: number;
 }
 
-export interface CannibalizationFix {
-  Id: number;
-  ScanCode: string;
-  ErrorCode: string;
-  Url: string | null;
-  ContentType: string;
-  OldContent: string | null;
+// ─── Keywords ────────────────────────────────────────────────────────────────
+
+export interface PageKeyword {
+  KeywordID: number;
+  ScanID: number;
+  PromptID: number | null;
+  PageURL: string;
+  TreeCluster: string | null;
+  PrimaryKeyword: string;
+  SecondaryKeywords: string[];   // parsed from JSON
+  SearchIntent: string | null;
+  KeywordGaps: string[];         // parsed from JSON
+  MissingLSITerms: string[];     // parsed from JSON
+  ContentFocusScore: number | null;
+  CreatedAt: string | null;
+}
+
+// ─── Cannibalization ─────────────────────────────────────────────────────────
+
+export interface CannibalizationIssue {
+  IssueID: number;
+  ScanID: number;
+  PromptID: number | null;
+  TreeCluster: string | null;
+  CannibalKeyword: string | null;
+  Severity: 'High' | 'Medium' | 'Low';
+  SeverityReason: string | null;
+  URL1: string | null;
+  URL1_FieldName: string | null;
+  URL1_CurrentContent: string | null;
+  URL1_SuggestedFix: string | null;
+  URL2: string | null;
+  URL2_FieldName: string | null;
+  URL2_CurrentContent: string | null;
+  URL2_SuggestedFix: string | null;
+  OverallRecommendation: string | null;
+  Reasoning: string | null;
+  Status: 'Yet to Act' | 'Acted' | 'Deferred';
+  LastAuditedByUserID: number | null;
+  LastAuditedAt: string | null;
+  UserComment: string | null;
+  DeferredReason: string | null;
+  VerifiedFixed: boolean | null;
+  VerifiedInScanID: number | null;
+  CreatedAt: string | null;
+}
+
+// ─── Content Improvements ────────────────────────────────────────────────────
+
+export interface ContentImprovement {
+  ImprovementID: number;
+  ScanID: number;
+  PromptID: number | null;
+  TreeCluster: string | null;
+  PageURL: string | null;
+  FieldName: string | null;
+  CurrentContent: string | null;
+  CurrentCharCount: number | null;
   SuggestedContent: string | null;
-  ProcessedBy: string | null;
+  SuggestedCharCount: number | null;
+  IssueType: string | null;
+  Reasoning: string | null;
+  Priority: 'High' | 'Medium' | 'Low';
+  ImpactEstimate: string | null;
+  Status: 'Yet to Act' | 'Acted' | 'Deferred';
+  LastAuditedByUserID: number | null;
+  LastAuditedAt: string | null;
+  UserComment: string | null;
+  DeferredReason: string | null;
+  VerifiedFixed: boolean | null;
+  VerifiedInScanID: number | null;
+  CreatedAt: string | null;
 }
 
-export interface PageSEOInput {
-  Id: number;
-  Url: string;
-  PageName: string | null;
-  MetaTitle: string | null;          SuggestedMetaTitle: string | null;
-  MetaDescription: string | null;    SuggestedMetaDescription: string | null;
-  H1: string | null;                 SuggestedH1: string | null;
-  H2: string | null;                 SuggestedH2: string | null;
-  H3: string | null;                 SuggestedH3: string | null;
-  H4: string | null;                 SuggestedH4: string | null;
-  H5: string | null;                 SuggestedH5: string | null;
-  H6: string | null;                 SuggestedH6: string | null;
-  Content: string | null;            SuggestedContent: string | null;
-  PrimaryKeywords: string | null;
-  SecondaryKeyword: string | null;
-  WordCount: number | null;
-  InternalLinks: number | null;
-  ExternalLinks: number | null;
-  StatusCode: number | null;
-  Priority: number | null;
-  IsAddressed: boolean | null;
-  ScrapedDateTime: string | null;
-  Status: string | null;
-  ProcessedBy: string | null;
-  Comments: string | null;
+// ─── Claude Call Log ─────────────────────────────────────────────────────────
+
+export interface ClaudeCallLog {
+  CallID: number;
+  ScanID: number;
+  CallType: 'KeywordExtraction' | 'Cannibalization' | 'ContentImprovement';
+  EntityURL: string | null;
+  SystemPrompt: string | null;
+  UserMessage: string | null;
+  RawResponse: string | null;
+  CallSucceeded: boolean | null;
+  InputCharsEstimate: number | null;
+  OutputCharsEstimate: number | null;
+  CalledAt: string | null;
+  DurationMs: number | null;
+  ErrorMessage: string | null;
+}
+
+// ─── Prompts ─────────────────────────────────────────────────────────────────
+
+export interface Prompt {
+  PromptID: number;
+  PromptType: 'KeywordExtraction' | 'Cannibalization' | 'ContentImprovement';
+  VersionNumber: number;
+  VersionLabel: string | null;
+  SystemPrompt: string;
+  UserPromptTemplate: string;
+  IsActive: boolean;
+  Notes: string | null;
+  CreatedAt: string | null;
+  CreatedByUserID: number | null;
+  DeactivatedAt: string | null;
+  DeactivatedByUserID: number | null;
+}
+
+// ─── Dashboard ───────────────────────────────────────────────────────────────
+
+export interface DashboardStats {
+  totalScans: number;
+  openIssues: number;
+  highSeverityCannibalization: number;
+  highPriorityImprovements: number;
+  recentScans: Scan[];
 }
