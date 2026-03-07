@@ -40,6 +40,53 @@ function groupBy<T>(arr: T[], key: (item: T) => string): Record<string, T[]> {
   }, {});
 }
 
+function trunc(s: string | null | undefined, n = 120) {
+  if (!s) return null;
+  return s.length > n ? s.slice(0, n) + '…' : s;
+}
+
+// ─── Expand All toolbar ───────────────────────────────────────────────────────
+
+function ExpandToolbar({
+  total,
+  expandedCount,
+  onExpandAll,
+  onCollapseAll,
+}: {
+  total: number;
+  expandedCount: number;
+  onExpandAll: () => void;
+  onCollapseAll: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-between mb-4">
+      <p className="text-sm text-muted">
+        {expandedCount} of {total} expanded
+      </p>
+      <div className="flex gap-2">
+        <button
+          onClick={onExpandAll}
+          className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-border bg-surface hover:bg-surface2 text-ink-2 transition-colors"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+          Expand All
+        </button>
+        <button
+          onClick={onCollapseAll}
+          className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-border bg-surface hover:bg-surface2 text-ink-2 transition-colors"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+          </svg>
+          Collapse All
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Status selector (inline) ─────────────────────────────────────────────────
 
 function IssueStatusRow({
@@ -141,17 +188,11 @@ function KeywordsTab({ scanId }: { scanId: number }) {
           {rows.map((kw) => (
             <tr key={kw.KeywordID} className="border-b border-border/50 hover:bg-surface2 transition-colors">
               <td className="px-4 py-3">
-                {kw.TreeCluster && (
-                  <Badge variant="purple">{kw.TreeCluster}</Badge>
-                )}
+                {kw.TreeCluster && <Badge variant="purple">{kw.TreeCluster}</Badge>}
               </td>
               <td className="px-4 py-3 max-w-[220px]">
-                <a
-                  href={kw.PageURL}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-primary hover:underline text-xs break-all font-mono"
-                >
+                <a href={kw.PageURL} target="_blank" rel="noreferrer"
+                  className="text-primary hover:underline text-xs break-all font-mono">
                   {kw.PageURL.replace('https://www.boldpreciousmetals.com', '…')}
                 </a>
               </td>
@@ -162,15 +203,9 @@ function KeywordsTab({ scanId }: { scanId: number }) {
               <td className="px-4 py-3 text-center">
                 <ScoreBadge score={kw.ContentFocusScore} />
               </td>
-              <td className="px-4 py-3">
-                <TagList items={kw.SecondaryKeywords} max={3} />
-              </td>
-              <td className="px-4 py-3">
-                <TagList items={kw.KeywordGaps} max={3} />
-              </td>
-              <td className="px-4 py-3">
-                <TagList items={kw.MissingLSITerms} max={3} />
-              </td>
+              <td className="px-4 py-3"><TagList items={kw.SecondaryKeywords} max={3} /></td>
+              <td className="px-4 py-3"><TagList items={kw.KeywordGaps} max={3} /></td>
+              <td className="px-4 py-3"><TagList items={kw.MissingLSITerms} max={3} /></td>
             </tr>
           ))}
         </tbody>
@@ -186,13 +221,9 @@ function TagList({ items, max }: { items: string[]; max: number }) {
   return (
     <div className="flex flex-wrap gap-1">
       {shown.map((t, i) => (
-        <span key={i} className="bg-slate-100 text-slate-600 border border-slate-200 text-[10px] px-1.5 py-0.5 rounded-md">
-          {t}
-        </span>
+        <span key={i} className="bg-slate-100 text-slate-700 border border-slate-200 text-[10px] px-1.5 py-0.5 rounded-md">{t}</span>
       ))}
-      {rest > 0 && (
-        <span className="text-muted text-[10px]">+{rest}</span>
-      )}
+      {rest > 0 && <span className="text-muted text-[10px]">+{rest}</span>}
     </div>
   );
 }
@@ -211,18 +242,12 @@ function CannibalizationTab({ scanId }: { scanId: number }) {
   }, [scanId]);
 
   const updateIssue = (id: number, status: string, comment: string) => {
-    setIssues((prev) =>
-      prev.map((i) => i.IssueID === id ? { ...i, Status: status as any, UserComment: comment } : i)
-    );
+    setIssues((prev) => prev.map((i) => i.IssueID === id ? { ...i, Status: status as any, UserComment: comment } : i));
   };
 
-  const toggleExpand = (id: number) => {
-    setExpanded((s) => {
-      const n = new Set(s);
-      n.has(id) ? n.delete(id) : n.add(id);
-      return n;
-    });
-  };
+  const toggle = (id: number) => setExpanded((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const expandAll = () => setExpanded(new Set(issues.map((i) => i.IssueID)));
+  const collapseAll = () => setExpanded(new Set());
 
   if (loading) return <Spinner />;
   if (issues.length === 0) return <Empty msg="No cannibalization issues for this scan." />;
@@ -231,46 +256,69 @@ function CannibalizationTab({ scanId }: { scanId: number }) {
 
   return (
     <div className="space-y-6">
+      <ExpandToolbar
+        total={issues.length}
+        expandedCount={expanded.size}
+        onExpandAll={expandAll}
+        onCollapseAll={collapseAll}
+      />
+
       {Object.entries(grouped).map(([tree, items]) => (
         <div key={tree} className="space-y-3">
+          {/* Tree header */}
           <div className="flex items-center gap-3">
             <Badge variant="purple">{tree}</Badge>
             <span className="text-muted text-xs">{items.length} issue{items.length !== 1 ? 's' : ''}</span>
           </div>
+
           {items.map((issue) => {
             const open = expanded.has(issue.IssueID);
+            const suggestion = issue.URL1_SuggestedFix || issue.URL2_SuggestedFix || issue.OverallRecommendation;
+
             return (
-              <div
-                key={issue.IssueID}
-                className="bg-surface rounded-xl border border-border shadow-card overflow-hidden"
-              >
-                {/* Header row */}
+              <div key={issue.IssueID} className="bg-surface rounded-xl border border-border shadow-card overflow-hidden">
+
+                {/* ── Collapsed header ── */}
                 <button
-                  onClick={() => toggleExpand(issue.IssueID)}
-                  className="w-full flex items-center gap-4 px-5 py-4 hover:bg-surface2 transition-colors text-left"
+                  onClick={() => toggle(issue.IssueID)}
+                  className="w-full text-left hover:bg-surface2 transition-colors"
                 >
-                  <SeverityBadge severity={issue.Severity} />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-ink text-sm truncate">
-                      {issue.CannibalKeyword ?? 'Keyword Cannibalization'}
-                    </p>
-                    <p className="text-muted text-xs mt-0.5 truncate">
-                      {issue.URL1?.replace('https://www.boldpreciousmetals.com', '…')} ↔{' '}
-                      {issue.URL2?.replace('https://www.boldpreciousmetals.com', '…')}
-                    </p>
+                  {/* Top row */}
+                  <div className="flex items-center gap-4 px-5 py-3.5">
+                    <SeverityBadge severity={issue.Severity} />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-ink text-sm truncate">
+                        {issue.CannibalKeyword ?? 'Keyword Cannibalization'}
+                      </p>
+                      <p className="text-muted text-xs mt-0.5 truncate">
+                        {issue.URL1?.replace('https://www.boldpreciousmetals.com', '…')} ↔{' '}
+                        {issue.URL2?.replace('https://www.boldpreciousmetals.com', '…')}
+                      </p>
+                    </div>
+                    <StatusBadge status={issue.Status} />
+                    <svg className={`w-4 h-4 text-muted transition-transform flex-shrink-0 ${open ? 'rotate-180' : ''}`}
+                      fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                    </svg>
                   </div>
-                  <StatusBadge status={issue.Status} />
-                  <svg
-                    className={`w-4 h-4 text-muted transition-transform flex-shrink-0 ${open ? 'rotate-180' : ''}`}
-                    fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                  </svg>
+
+                  {/* Suggestion preview strip (always visible) */}
+                  {!open && suggestion && (
+                    <div className="mx-5 mb-3.5 flex items-start gap-2 bg-success-light border border-green-200 rounded-lg px-3 py-2">
+                      <svg className="w-3.5 h-3.5 text-success mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                      </svg>
+                      <p className="text-xs text-green-800 font-medium leading-relaxed">
+                        <span className="text-green-600 font-semibold">Suggestion: </span>
+                        {trunc(suggestion, 160)}
+                      </p>
+                    </div>
+                  )}
                 </button>
 
+                {/* ── Expanded detail ── */}
                 {open && (
                   <div className="px-5 pb-5 border-t border-border space-y-4">
-                    {/* Severity reason */}
                     {issue.SeverityReason && (
                       <p className="text-sm text-ink-2 bg-surface2 rounded-lg px-4 py-3 mt-4">
                         <span className="font-medium">Severity: </span>{issue.SeverityReason}
@@ -290,12 +338,8 @@ function CannibalizationTab({ scanId }: { scanId: number }) {
                           </div>
                           <div className="p-4 space-y-3">
                             {side.url && (
-                              <a
-                                href={side.url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="text-primary hover:underline text-xs font-mono break-all block"
-                              >
+                              <a href={side.url} target="_blank" rel="noreferrer"
+                                className="text-primary hover:underline text-xs font-mono break-all block">
                                 {side.url}
                               </a>
                             )}
@@ -307,8 +351,8 @@ function CannibalizationTab({ scanId }: { scanId: number }) {
                             )}
                             {side.fix && (
                               <div>
-                                <p className="text-[10px] font-semibold text-success uppercase mb-1">Suggested Fix</p>
-                                <p className="text-xs text-ink-2 bg-success-light border border-green-100 rounded-lg p-3">{side.fix}</p>
+                                <p className="text-[10px] font-semibold text-success uppercase mb-1">✦ Suggested Fix</p>
+                                <p className="text-xs text-ink-2 bg-success-light border border-green-200 rounded-lg p-3 font-medium">{side.fix}</p>
                               </div>
                             )}
                           </div>
@@ -316,12 +360,12 @@ function CannibalizationTab({ scanId }: { scanId: number }) {
                       ))}
                     </div>
 
-                    {/* Recommendation + reasoning */}
+                    {/* Recommendation + Reasoning */}
                     {(issue.OverallRecommendation || issue.Reasoning) && (
                       <div className="grid grid-cols-2 gap-4">
                         {issue.OverallRecommendation && (
-                          <div className="rounded-xl border border-border p-4">
-                            <p className="text-[10px] font-semibold text-muted uppercase mb-1.5">Overall Recommendation</p>
+                          <div className="rounded-xl border border-green-200 bg-success-light p-4">
+                            <p className="text-[10px] font-semibold text-success uppercase mb-1.5">✦ Overall Recommendation</p>
                             <p className="text-sm text-ink-2">{issue.OverallRecommendation}</p>
                           </div>
                         )}
@@ -334,7 +378,6 @@ function CannibalizationTab({ scanId }: { scanId: number }) {
                       </div>
                     )}
 
-                    {/* Status update */}
                     <IssueStatusRow
                       id={issue.IssueID}
                       type="cannibalization"
@@ -367,18 +410,12 @@ function ContentTab({ scanId }: { scanId: number }) {
   }, [scanId]);
 
   const updateItem = (id: number, status: string, comment: string) => {
-    setItems((prev) =>
-      prev.map((i) => i.ImprovementID === id ? { ...i, Status: status as any, UserComment: comment } : i)
-    );
+    setItems((prev) => prev.map((i) => i.ImprovementID === id ? { ...i, Status: status as any, UserComment: comment } : i));
   };
 
-  const toggleExpand = (id: number) => {
-    setExpanded((s) => {
-      const n = new Set(s);
-      n.has(id) ? n.delete(id) : n.add(id);
-      return n;
-    });
-  };
+  const toggle = (id: number) => setExpanded((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const expandAll = () => setExpanded(new Set(items.map((i) => i.ImprovementID)));
+  const collapseAll = () => setExpanded(new Set());
 
   if (loading) return <Spinner />;
   if (items.length === 0) return <Empty msg="No content improvements for this scan." />;
@@ -387,82 +424,112 @@ function ContentTab({ scanId }: { scanId: number }) {
 
   return (
     <div className="space-y-6">
+      <ExpandToolbar
+        total={items.length}
+        expandedCount={expanded.size}
+        onExpandAll={expandAll}
+        onCollapseAll={collapseAll}
+      />
+
       {Object.entries(grouped).map(([url, pageItems]) => (
         <div key={url} className="space-y-3">
+          {/* Page URL header */}
           <div className="flex items-center gap-3">
-            <a
-              href={url}
-              target="_blank"
-              rel="noreferrer"
-              className="text-primary hover:underline text-xs font-mono break-all"
-            >
+            <a href={url} target="_blank" rel="noreferrer"
+              className="text-primary hover:underline text-xs font-mono break-all">
               {url}
             </a>
-            <span className="text-muted text-xs flex-shrink-0">{pageItems.length} improvement{pageItems.length !== 1 ? 's' : ''}</span>
+            <span className="text-muted text-xs flex-shrink-0">
+              {pageItems.length} improvement{pageItems.length !== 1 ? 's' : ''}
+            </span>
           </div>
+
           {pageItems.map((item) => {
             const open = expanded.has(item.ImprovementID);
+
             return (
-              <div
-                key={item.ImprovementID}
-                className="bg-surface rounded-xl border border-border shadow-card overflow-hidden"
-              >
+              <div key={item.ImprovementID} className="bg-surface rounded-xl border border-border shadow-card overflow-hidden">
+
+                {/* ── Collapsed header ── */}
                 <button
-                  onClick={() => toggleExpand(item.ImprovementID)}
-                  className="w-full flex items-center gap-4 px-5 py-4 hover:bg-surface2 transition-colors text-left"
+                  onClick={() => toggle(item.ImprovementID)}
+                  className="w-full text-left hover:bg-surface2 transition-colors"
                 >
-                  <PriorityBadge priority={item.Priority} />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-ink text-sm">
-                      {item.FieldName ?? 'Content Field'}
-                      {item.IssueType && (
-                        <span className="ml-2 text-muted text-xs font-normal">· {item.IssueType}</span>
+                  {/* Top row */}
+                  <div className="flex items-center gap-4 px-5 py-3.5">
+                    <PriorityBadge priority={item.Priority} />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-ink text-sm">
+                        {item.FieldName ?? 'Content Field'}
+                        {item.IssueType && (
+                          <span className="ml-2 text-muted text-xs font-normal">· {item.IssueType}</span>
+                        )}
+                      </p>
+                      {/* Current content preview */}
+                      {!open && item.CurrentContent && (
+                        <p className="text-muted text-xs mt-0.5 truncate">
+                          Current: {trunc(item.CurrentContent, 100)}
+                        </p>
                       )}
-                    </p>
-                    <p className="text-muted text-xs mt-0.5 truncate">{item.ImpactEstimate}</p>
+                    </div>
+                    <StatusBadge status={item.Status} />
+                    <svg className={`w-4 h-4 text-muted transition-transform flex-shrink-0 ${open ? 'rotate-180' : ''}`}
+                      fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                    </svg>
                   </div>
-                  <StatusBadge status={item.Status} />
-                  <svg
-                    className={`w-4 h-4 text-muted transition-transform flex-shrink-0 ${open ? 'rotate-180' : ''}`}
-                    fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                  </svg>
+
+                  {/* Suggestion preview strip (always visible when collapsed) */}
+                  {!open && item.SuggestedContent && (
+                    <div className="mx-5 mb-3.5 rounded-lg border border-green-200 bg-success-light overflow-hidden">
+                      <div className="px-3 py-1.5 bg-green-100 border-b border-green-200 flex items-center gap-1.5">
+                        <svg className="w-3.5 h-3.5 text-success" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                        <span className="text-[10px] font-semibold text-success uppercase tracking-wide">Suggested Content</span>
+                        {item.SuggestedCharCount && (
+                          <span className="ml-auto text-[10px] text-green-600 font-mono">{item.SuggestedCharCount} chars</span>
+                        )}
+                      </div>
+                      <p className="px-3 py-2 text-xs text-green-900 leading-relaxed">
+                        {trunc(item.SuggestedContent, 200)}
+                      </p>
+                    </div>
+                  )}
                 </button>
 
+                {/* ── Expanded detail ── */}
                 {open && (
                   <div className="px-5 pb-5 border-t border-border space-y-4 mt-1">
-                    {/* Diff view */}
+                    {/* Side-by-side diff */}
                     <div className="grid grid-cols-2 gap-4 mt-4">
+                      {/* Current */}
                       <div className="rounded-xl border border-border overflow-hidden">
-                        <div className="px-4 py-2 bg-surface2 border-b border-border">
-                          <p className="text-[10px] font-semibold text-muted uppercase">
-                            Current
-                            {item.CurrentCharCount !== null && (
-                              <span className="ml-1.5 text-muted font-mono">({item.CurrentCharCount} chars)</span>
-                            )}
-                          </p>
+                        <div className="px-4 py-2 bg-surface2 border-b border-border flex items-center justify-between">
+                          <p className="text-[10px] font-semibold text-muted uppercase">Current</p>
+                          {item.CurrentCharCount !== null && (
+                            <span className="text-[10px] text-muted font-mono">{item.CurrentCharCount} chars</span>
+                          )}
                         </div>
                         <div className="p-4">
-                          <p className="text-xs text-ink-2 whitespace-pre-wrap">{item.CurrentContent || '—'}</p>
+                          <p className="text-xs text-ink-2 whitespace-pre-wrap leading-relaxed">{item.CurrentContent || '—'}</p>
                         </div>
                       </div>
+                      {/* Suggested */}
                       <div className="rounded-xl border border-green-200 overflow-hidden">
-                        <div className="px-4 py-2 bg-success-light border-b border-green-200">
-                          <p className="text-[10px] font-semibold text-success uppercase">
-                            Suggested
-                            {item.SuggestedCharCount !== null && (
-                              <span className="ml-1.5 font-mono">({item.SuggestedCharCount} chars)</span>
-                            )}
-                          </p>
+                        <div className="px-4 py-2 bg-green-100 border-b border-green-200 flex items-center justify-between">
+                          <p className="text-[10px] font-semibold text-success uppercase">✦ Suggested</p>
+                          {item.SuggestedCharCount !== null && (
+                            <span className="text-[10px] text-green-600 font-mono">{item.SuggestedCharCount} chars</span>
+                          )}
                         </div>
-                        <div className="p-4">
-                          <p className="text-xs text-ink-2 whitespace-pre-wrap">{item.SuggestedContent || '—'}</p>
+                        <div className="p-4 bg-success-light">
+                          <p className="text-xs text-green-900 whitespace-pre-wrap leading-relaxed font-medium">{item.SuggestedContent || '—'}</p>
                         </div>
                       </div>
                     </div>
 
-                    {/* Reasoning + impact */}
+                    {/* Reasoning + Impact */}
                     {(item.Reasoning || item.ImpactEstimate) && (
                       <div className="grid grid-cols-2 gap-4">
                         {item.Reasoning && (
@@ -480,7 +547,6 @@ function ContentTab({ scanId }: { scanId: number }) {
                       </div>
                     )}
 
-                    {/* Status update */}
                     <IssueStatusRow
                       id={item.ImprovementID}
                       type="improvement"
@@ -512,13 +578,7 @@ function CallsTab({ scanId }: { scanId: number }) {
       .then((d) => { setCalls(d); setLoading(false); });
   }, [scanId]);
 
-  const toggleExpand = (id: number) => {
-    setExpanded((s) => {
-      const n = new Set(s);
-      n.has(id) ? n.delete(id) : n.add(id);
-      return n;
-    });
-  };
+  const toggle = (id: number) => setExpanded((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
   if (loading) return <Spinner />;
   if (calls.length === 0) return <Empty msg="No Claude API calls logged for this scan." />;
@@ -543,11 +603,9 @@ function CallsTab({ scanId }: { scanId: number }) {
             const open = expanded.has(call.CallID);
             return (
               <>
-                <tr
-                  key={call.CallID}
+                <tr key={call.CallID}
                   className="border-b border-border/50 hover:bg-surface2 cursor-pointer transition-colors"
-                  onClick={() => toggleExpand(call.CallID)}
-                >
+                  onClick={() => toggle(call.CallID)}>
                   <td className="px-4 py-3"><CallTypeBadge type={call.CallType} /></td>
                   <td className="px-4 py-3 max-w-[280px]">
                     <span className="text-xs font-mono text-ink-2 break-all">
@@ -555,27 +613,17 @@ function CallsTab({ scanId }: { scanId: number }) {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-center">
-                    {call.CallSucceeded ? (
-                      <span className="text-success">✓</span>
-                    ) : (
-                      <span className="text-danger">✗</span>
-                    )}
+                    {call.CallSucceeded
+                      ? <span className="text-success font-bold">✓</span>
+                      : <span className="text-danger font-bold">✗</span>}
                   </td>
-                  <td className="px-4 py-3 text-right font-mono text-xs">
-                    {call.DurationMs ? `${call.DurationMs}ms` : '—'}
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono text-xs">
-                    {call.InputCharsEstimate?.toLocaleString() ?? '—'}
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono text-xs">
-                    {call.OutputCharsEstimate?.toLocaleString() ?? '—'}
-                  </td>
+                  <td className="px-4 py-3 text-right font-mono text-xs">{call.DurationMs ? `${call.DurationMs}ms` : '—'}</td>
+                  <td className="px-4 py-3 text-right font-mono text-xs">{call.InputCharsEstimate?.toLocaleString() ?? '—'}</td>
+                  <td className="px-4 py-3 text-right font-mono text-xs">{call.OutputCharsEstimate?.toLocaleString() ?? '—'}</td>
                   <td className="px-4 py-3 text-xs text-muted">{fmtDate(call.CalledAt)}</td>
                   <td className="px-4 py-3 text-right">
-                    <svg
-                      className={`w-4 h-4 text-muted inline transition-transform ${open ? 'rotate-180' : ''}`}
-                      fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"
-                    >
+                    <svg className={`w-4 h-4 text-muted inline transition-transform ${open ? 'rotate-180' : ''}`}
+                      fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
                     </svg>
                   </td>
@@ -593,15 +641,13 @@ function CallsTab({ scanId }: { scanId: number }) {
                           { label: 'System Prompt', val: call.SystemPrompt },
                           { label: 'User Message', val: call.UserMessage },
                           { label: 'Raw Response', val: call.RawResponse },
-                        ].map(({ label, val }) => (
-                          val && (
-                            <div key={label}>
-                              <p className="text-[10px] font-semibold text-muted uppercase mb-1">{label}</p>
-                              <pre className="text-xs text-ink-2 bg-surface border border-border rounded-lg p-3 overflow-x-auto whitespace-pre-wrap max-h-64">
-                                {val}
-                              </pre>
-                            </div>
-                          )
+                        ].map(({ label, val }) => val && (
+                          <div key={label}>
+                            <p className="text-[10px] font-semibold text-muted uppercase mb-1">{label}</p>
+                            <pre className="text-xs text-ink-2 bg-surface border border-border rounded-lg p-3 overflow-x-auto whitespace-pre-wrap max-h-64 font-mono">
+                              {val}
+                            </pre>
+                          </div>
                         ))}
                       </div>
                     </td>
@@ -616,7 +662,7 @@ function CallsTab({ scanId }: { scanId: number }) {
   );
 }
 
-// ─── Shared components ────────────────────────────────────────────────────────
+// ─── Shared ───────────────────────────────────────────────────────────────────
 
 function Spinner() {
   return (
@@ -627,18 +673,16 @@ function Spinner() {
 }
 
 function Empty({ msg }: { msg: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center h-48 text-muted text-sm">{msg}</div>
-  );
+  return <div className="flex flex-col items-center justify-center h-48 text-muted text-sm">{msg}</div>;
 }
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 const TABS: { id: Tab; label: string; countKey?: string }[] = [
-  { id: 'keywords', label: 'Keywords', countKey: 'KeywordCount' },
-  { id: 'cannibalization', label: 'Cannibalization', countKey: 'CannibalizationCount' },
-  { id: 'content', label: 'Content', countKey: 'ImprovementCount' },
-  { id: 'calls', label: 'Claude Calls', countKey: 'CallCount' },
+  { id: 'keywords',        label: 'Keywords',      countKey: 'KeywordCount' },
+  { id: 'cannibalization', label: 'Cannibalization',countKey: 'CannibalizationCount' },
+  { id: 'content',         label: 'Content',        countKey: 'ImprovementCount' },
+  { id: 'calls',           label: 'Claude Calls',   countKey: 'CallCount' },
 ];
 
 export default function ScanDetailPage() {
@@ -655,11 +699,8 @@ export default function ScanDetailPage() {
       .then((r) => r.json())
       .then((d) => { setScan(d); setLoading(false); });
 
-  useEffect(() => {
-    fetchScan();
-  }, [scanId]);
+  useEffect(() => { fetchScan(); }, [scanId]);
 
-  // Poll while Running
   useEffect(() => {
     if (scan?.Status === 'Running') {
       pollingRef.current = setTimeout(() => { fetchScan(); }, 10000);
@@ -690,48 +731,28 @@ export default function ScanDetailPage() {
 
       {/* Metadata card */}
       <div className="bg-surface rounded-2xl border border-border shadow-card p-6">
-        <div className="flex items-start justify-between gap-4">
-          <div className="space-y-1">
-            <div className="flex items-center gap-3">
-              <h1 className="text-xl font-bold font-display text-ink">{scan.ScanName}</h1>
-              <ScanStatusBadge status={scan.Status} />
-              {scan.Status === 'Running' && (
-                <span className="flex items-center gap-1.5 text-xs text-blue-600">
-                  <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-                  Live — refreshing every 10s
-                </span>
-              )}
-            </div>
-            <p className="text-muted text-sm">Scan #{scan.ScanID}</p>
-          </div>
+        <div className="flex items-center gap-3 flex-wrap">
+          <h1 className="text-xl font-bold font-display text-ink">{scan.ScanName}</h1>
+          <ScanStatusBadge status={scan.Status} />
+          {scan.Status === 'Running' && (
+            <span className="flex items-center gap-1.5 text-xs text-blue-600">
+              <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+              Live — refreshing every 10s
+            </span>
+          )}
+          <span className="text-muted text-sm ml-1">#{scan.ScanID}</span>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mt-6 pt-6 border-t border-border">
-          <MetaField label="Started" value={fmtDate(scan.StartedAt)} />
-          <MetaField label="Completed" value={fmtDate(scan.EndedAt)} />
-          <MetaField label="URLs Scraped" value={scan.URLsScraped ?? '—'} />
-          <MetaField label="Trees Analysed" value={scan.TreesAnalysed ?? '—'} />
-          <MetaField
-            label="Cannib. Prompt"
-            value={
-              scan.CannibalizationPromptLabel
-                ? `v${scan.CannibalizationPromptVersion} · ${scan.CannibalizationPromptLabel}`
-                : '—'
-            }
-          />
-          <MetaField
-            label="Content Prompt"
-            value={
-              scan.ContentPromptLabel
-                ? `v${scan.ContentPromptVersion} · ${scan.ContentPromptLabel}`
-                : '—'
-            }
-          />
-          {scan.ErrorLog && (
-            <div className="col-span-2">
-              <MetaField label="Error Log" value={scan.ErrorLog} />
-            </div>
-          )}
+          <MetaField label="Started"       value={fmtDate(scan.StartedAt)} />
+          <MetaField label="Completed"     value={fmtDate(scan.EndedAt)} />
+          <MetaField label="URLs Scraped"  value={scan.URLsScraped ?? '—'} />
+          <MetaField label="Trees"         value={scan.TreesAnalysed ?? '—'} />
+          <MetaField label="Cannib. Prompt"
+            value={scan.CannibalizationPromptLabel ? `v${scan.CannibalizationPromptVersion} · ${scan.CannibalizationPromptLabel}` : '—'} />
+          <MetaField label="Content Prompt"
+            value={scan.ContentPromptLabel ? `v${scan.ContentPromptVersion} · ${scan.ContentPromptLabel}` : '—'} />
+          {scan.ErrorLog && <div className="col-span-2"><MetaField label="Error Log" value={scan.ErrorLog} /></div>}
         </div>
       </div>
 
@@ -741,22 +762,17 @@ export default function ScanDetailPage() {
           {TABS.map((tab) => {
             const count = tab.countKey ? scan[tab.countKey] : null;
             return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
+              <button key={tab.id} onClick={() => setActiveTab(tab.id)}
                 className={`px-5 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
                   activeTab === tab.id
                     ? 'border-primary text-primary'
                     : 'border-transparent text-muted hover:text-ink hover:border-border-strong'
-                }`}
-              >
+                }`}>
                 {tab.label}
                 {count !== null && count !== undefined && (
                   <span className={`text-[11px] px-1.5 py-0.5 rounded-full font-semibold ${
                     activeTab === tab.id ? 'bg-primary-light text-primary' : 'bg-muted-light text-muted'
-                  }`}>
-                    {count}
-                  </span>
+                  }`}>{count}</span>
                 )}
               </button>
             );
@@ -766,10 +782,10 @@ export default function ScanDetailPage() {
 
       {/* Tab content */}
       <div>
-        {activeTab === 'keywords' && <KeywordsTab scanId={scanId} />}
+        {activeTab === 'keywords'        && <KeywordsTab      scanId={scanId} />}
         {activeTab === 'cannibalization' && <CannibalizationTab scanId={scanId} />}
-        {activeTab === 'content' && <ContentTab scanId={scanId} />}
-        {activeTab === 'calls' && <CallsTab scanId={scanId} />}
+        {activeTab === 'content'         && <ContentTab        scanId={scanId} />}
+        {activeTab === 'calls'           && <CallsTab          scanId={scanId} />}
       </div>
     </div>
   );
