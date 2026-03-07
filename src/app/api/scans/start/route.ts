@@ -9,7 +9,12 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
   const body = await req.json();
-  const { scanName, mode, urlFilters, limitN, selectedURLIds } = body;
+  const { scanName, mode, urlFilters, limitN, selectedURLIds, analyses } = body;
+
+  // analyses is an array of enabled phases e.g. ['keyword','cannibalization','content']
+  const runKeyword         = !analyses || (analyses as string[]).includes('keyword');
+  const runCannibalization = !analyses || (analyses as string[]).includes('cannibalization');
+  const runContent         = !analyses || (analyses as string[]).includes('content');
 
   if (!scanName) {
     return NextResponse.json({ error: 'scanName is required' }, { status: 400 });
@@ -66,6 +71,11 @@ export async function POST(req: NextRequest) {
       args.push('--url-filters', ...pairs);
     }
   }
+
+  // Skip flags
+  if (!runKeyword)         args.push('--skip-keyword');
+  if (!runCannibalization) args.push('--skip-cannibalization');
+  if (!runContent)         args.push('--skip-content');
 
   args.push('--report');
 

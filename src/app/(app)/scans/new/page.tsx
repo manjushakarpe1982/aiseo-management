@@ -223,8 +223,20 @@ export default function NewScanPage() {
   const [filters, setFilters] = useState<Filter[]>([{ pattern: 'silver-coins', count: 10 }]);
   const [limitN, setLimitN] = useState(50);
   const [selectedURLIds, setSelectedURLIds] = useState<Set<number>>(new Set());
+  const [analyses, setAnalyses] = useState({
+    keyword: true,
+    cannibalization: true,
+    content: true,
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const toggleAnalysis = (key: keyof typeof analyses) =>
+    setAnalyses((a) => ({ ...a, [key]: !a[key] }));
+
+  const selectedAnalyses = Object.entries(analyses)
+    .filter(([, v]) => v)
+    .map(([k]) => k);
 
   const addFilter = () => setFilters((f) => [...f, { pattern: '', count: 10 }]);
   const removeFilter = (i: number) => setFilters((f) => f.filter((_, idx) => idx !== i));
@@ -236,6 +248,7 @@ export default function NewScanPage() {
     e.preventDefault();
     if (!scanName.trim()) { setError('Scan name is required'); return; }
     if (mode === 'urls' && selectedURLIds.size === 0) { setError('Select at least one URL'); return; }
+    if (selectedAnalyses.length === 0) { setError('Select at least one analysis to run'); return; }
     setLoading(true);
     setError('');
 
@@ -249,6 +262,7 @@ export default function NewScanPage() {
           urlFilters: mode === 'filters' ? filters : undefined,
           limitN: mode === 'limit' ? limitN : undefined,
           selectedURLIds: mode === 'urls' ? Array.from(selectedURLIds) : undefined,
+          analyses: selectedAnalyses,
         }),
       });
       const data = await res.json();
@@ -393,6 +407,71 @@ export default function NewScanPage() {
               />
               <p className="text-muted text-xs mt-1.5">Top N active URLs from ClCode_URLs</p>
             </div>
+          )}
+        </div>
+
+        {/* Analyses to run */}
+        <div className="bg-surface rounded-2xl border border-border shadow-card p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="font-semibold text-ink font-display">Analyses to Run</h2>
+            <span className="text-xs text-muted">{selectedAnalyses.length} of 3 selected</span>
+          </div>
+
+          <div className="space-y-2">
+            {/* Keyword Extraction */}
+            <label className={`flex items-start gap-3 p-3.5 rounded-xl border-2 cursor-pointer transition-colors ${analyses.keyword ? 'border-primary bg-primary-light' : 'border-border hover:border-border-strong'}`}>
+              <input
+                type="checkbox"
+                checked={analyses.keyword}
+                onChange={() => toggleAnalysis('keyword')}
+                className="mt-0.5 accent-primary w-4 h-4 flex-shrink-0"
+              />
+              <div className="min-w-0">
+                <p className="font-medium text-ink text-sm">Keyword Extraction</p>
+                <p className="text-muted text-xs mt-0.5">
+                  Identifies primary keywords, search intent, keyword gaps and missing LSI terms per page.
+                  Enriches the other two analyses when enabled.
+                </p>
+              </div>
+            </label>
+
+            {/* Cannibalization */}
+            <label className={`flex items-start gap-3 p-3.5 rounded-xl border-2 cursor-pointer transition-colors ${analyses.cannibalization ? 'border-primary bg-primary-light' : 'border-border hover:border-border-strong'}`}>
+              <input
+                type="checkbox"
+                checked={analyses.cannibalization}
+                onChange={() => toggleAnalysis('cannibalization')}
+                className="mt-0.5 accent-primary w-4 h-4 flex-shrink-0"
+              />
+              <div className="min-w-0">
+                <p className="font-medium text-ink text-sm">Cannibalization Analysis</p>
+                <p className="text-muted text-xs mt-0.5">
+                  Detects pages within the same tree cluster competing for the same keywords.
+                  Requires at least 2 pages per cluster.
+                </p>
+              </div>
+            </label>
+
+            {/* Content Improvement */}
+            <label className={`flex items-start gap-3 p-3.5 rounded-xl border-2 cursor-pointer transition-colors ${analyses.content ? 'border-primary bg-primary-light' : 'border-border hover:border-border-strong'}`}>
+              <input
+                type="checkbox"
+                checked={analyses.content}
+                onChange={() => toggleAnalysis('content')}
+                className="mt-0.5 accent-primary w-4 h-4 flex-shrink-0"
+              />
+              <div className="min-w-0">
+                <p className="font-medium text-ink text-sm">Content Improvements</p>
+                <p className="text-muted text-xs mt-0.5">
+                  Suggests per-field improvements to meta title, description, H1, body copy and more.
+                  Uses keyword context if Keyword Extraction is also enabled.
+                </p>
+              </div>
+            </label>
+          </div>
+
+          {selectedAnalyses.length === 0 && (
+            <p className="text-xs text-danger font-medium">⚠ Select at least one analysis to run.</p>
           )}
         </div>
 
