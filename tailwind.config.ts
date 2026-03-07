@@ -28,9 +28,9 @@ const config: Config = {
         'warning-light': '#FFFBEB',
         danger: '#EF4444',
         'danger-light': '#FEF2F2',
-        ink: '#0F172A',
-        'ink-2': '#334155',
-        muted: '#94A3B8',
+        ink: '#0A0A0A',
+        'ink-2': '#1F2937',
+        muted: '#374151',
         'muted-light': '#F1F5F9',
       },
       boxShadow: {
