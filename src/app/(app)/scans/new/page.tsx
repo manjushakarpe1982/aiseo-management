@@ -1,19 +1,228 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import type { SiteURL } from '@/lib/types';
+
+// ── types ──────────────────────────────────────────────────────────────────
 
 interface Filter {
   pattern: string;
   count: number;
 }
 
+type Mode = 'filters' | 'limit' | 'urls';
+
+// ── small helpers ──────────────────────────────────────────────────────────
+
+function pathOf(url: string) {
+  try { return new URL(url).pathname; } catch { return url; }
+}
+
+function Spinner({ sm }: { sm?: boolean }) {
+  const sz = sm ? 'w-3 h-3' : 'w-4 h-4';
+  return <div className={`${sz} border-2 border-current border-t-transparent rounded-full animate-spin inline-block`} />;
+}
+
+// ── URL selector component ─────────────────────────────────────────────────
+
+function URLSelector({
+  selected,
+  onChange,
+}: {
+  selected: Set<number>;
+  onChange: (s: Set<number>) => void;
+}) {
+  const [urls, setUrls] = useState<SiteURL[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [needsSetup, setNeedsSetup] = useState(false);
+  const [search, setSearch] = useState('');
+
+  useEffect(() => {
+    fetch('/api/urls')
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.needsSetup) { setNeedsSetup(true); }
+        else { setUrls((d.urls ?? []).filter((u: SiteURL) => u.IsActive)); }
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
+
+  const filtered = useMemo(() => {
+    if (!search) return urls;
+    const q = search.toLowerCase();
+    return urls.filter(
+      (u) => u.PageURL.toLowerCase().includes(q) || (u.PageTitle ?? '').toLowerCase().includes(q)
+    );
+  }, [urls, search]);
+
+  // Group by TreeCluster
+  const grouped = useMemo(() => {
+    const map = new Map<string, SiteURL[]>();
+    for (const u of filtered) {
+      const key = u.TreeCluster ?? 'Other';
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(u);
+    }
+    return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b));
+  }, [filtered]);
+
+  function toggleAll() {
+    if (filtered.every((u) => selected.has(u.URLID))) {
+      // Deselect all filtered
+      const next = new Set(selected);
+      filtered.forEach((u) => next.delete(u.URLID));
+      onChange(next);
+    } else {
+      // Select all filtered
+      const next = new Set(selected);
+      filtered.forEach((u) => next.add(u.URLID));
+      onChange(next);
+    }
+  }
+
+  function toggleGroup(groupURLs: SiteURL[]) {
+    const allSelected = groupURLs.every((u) => selected.has(u.URLID));
+    const next = new Set(selected);
+    groupURLs.forEach((u) => allSelected ? next.delete(u.URLID) : next.add(u.URLID));
+    onChange(next);
+  }
+
+  function toggle(id: number) {
+    const next = new Set(selected);
+    next.has(id) ? next.delete(id) : next.add(id);
+    onChange(next);
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center gap-2 text-muted text-sm py-4">
+        <Spinner /> Loading URLs…
+      </div>
+    );
+  }
+
+  if (needsSetup) {
+    return (
+      <div className="text-center py-8 text-muted">
+        <p className="text-sm">URL Registry not set up yet.</p>
+        <a href="/urls" className="text-primary text-sm hover:underline mt-1 inline-block">
+          Go to URL Registry to set it up →
+        </a>
+      </div>
+    );
+  }
+
+  if (urls.length === 0) {
+    return (
+      <div className="text-center py-8 text-muted">
+        <p className="text-sm">No active URLs found.</p>
+        <a href="/urls" className="text-primary text-sm hover:underline mt-1 inline-block">
+          Add URLs in the URL Registry →
+        </a>
+      </div>
+    );
+  }
+
+  const allFilteredSelected = filtered.length > 0 && filtered.every((u) => selected.has(u.URLID));
+
+  return (
+    <div className="space-y-3">
+      {/* Search + select-all */}
+      <div className="flex gap-2 items-center">
+        <div className="relative flex-1">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search URLs…"
+            className="w-full pl-9 pr-3 py-2 rounded-xl border border-border bg-surface2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
+          />
+        </div>
+        <button
+          type="button"
+          onClick={toggleAll}
+          className="text-xs px-3 py-2 rounded-xl border border-border text-ink-2 hover:bg-surface2 whitespace-nowrap transition-colors"
+        >
+          {allFilteredSelected ? 'Deselect All' : 'Select All'}
+        </button>
+      </div>
+
+      {/* Selected count */}
+      {selected.size > 0 && (
+        <p className="text-xs text-primary font-semibold">
+          {selected.size} URL{selected.size !== 1 ? 's' : ''} selected
+        </p>
+      )}
+
+      {/* Groups */}
+      <div className="max-h-72 overflow-y-auto rounded-xl border border-border bg-surface2 divide-y divide-border">
+        {grouped.map(([cluster, groupURLs]) => {
+          const groupAllSelected = groupURLs.every((u) => selected.has(u.URLID));
+          const groupSomeSelected = groupURLs.some((u) => selected.has(u.URLID));
+          return (
+            <div key={cluster}>
+              {/* Cluster header */}
+              <div
+                className="flex items-center gap-2 px-3 py-2 bg-surface sticky top-0 border-b border-border cursor-pointer select-none hover:bg-surface2 transition-colors"
+                onClick={() => toggleGroup(groupURLs)}
+              >
+                <input
+                  type="checkbox"
+                  readOnly
+                  checked={groupAllSelected}
+                  ref={(el) => { if (el) el.indeterminate = !groupAllSelected && groupSomeSelected; }}
+                  className="accent-primary rounded w-3.5 h-3.5 flex-shrink-0"
+                />
+                <span className="text-xs font-semibold text-ink uppercase tracking-wide">{cluster}</span>
+                <span className="text-[10px] text-muted ml-auto">{groupURLs.length}</span>
+              </div>
+              {/* URLs in group */}
+              {groupURLs.map((u) => (
+                <label
+                  key={u.URLID}
+                  className="flex items-center gap-3 px-4 py-2 cursor-pointer hover:bg-primary/5 transition-colors"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected.has(u.URLID)}
+                    onChange={() => toggle(u.URLID)}
+                    className="accent-primary rounded w-3.5 h-3.5 flex-shrink-0"
+                  />
+                  <div className="min-w-0">
+                    <p className="font-mono text-xs text-ink truncate">{pathOf(u.PageURL)}</p>
+                    {u.PageTitle && (
+                      <p className="text-[10px] text-muted truncate">{u.PageTitle}</p>
+                    )}
+                  </div>
+                  {u.ScanRunCount > 0 && (
+                    <span className="ml-auto text-[10px] text-muted whitespace-nowrap flex-shrink-0">
+                      {u.ScanRunCount} scan{u.ScanRunCount !== 1 ? 's' : ''}
+                    </span>
+                  )}
+                </label>
+              ))}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── Main page ─────────────────────────────────────────────────────────────────
+
 export default function NewScanPage() {
   const router = useRouter();
   const [scanName, setScanName] = useState('');
-  const [mode, setMode] = useState<'filters' | 'limit'>('filters');
+  const [mode, setMode] = useState<Mode>('urls');
   const [filters, setFilters] = useState<Filter[]>([{ pattern: 'silver-coins', count: 10 }]);
   const [limitN, setLimitN] = useState(50);
+  const [selectedURLIds, setSelectedURLIds] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -26,6 +235,7 @@ export default function NewScanPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!scanName.trim()) { setError('Scan name is required'); return; }
+    if (mode === 'urls' && selectedURLIds.size === 0) { setError('Select at least one URL'); return; }
     setLoading(true);
     setError('');
 
@@ -33,7 +243,13 @@ export default function NewScanPage() {
       const res = await fetch('/api/scans/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scanName: scanName.trim(), mode, urlFilters: filters, limitN }),
+        body: JSON.stringify({
+          scanName: scanName.trim(),
+          mode,
+          urlFilters: mode === 'filters' ? filters : undefined,
+          limitN: mode === 'limit' ? limitN : undefined,
+          selectedURLIds: mode === 'urls' ? Array.from(selectedURLIds) : undefined,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to start scan');
@@ -71,42 +287,53 @@ export default function NewScanPage() {
         {/* Mode */}
         <div className="bg-surface rounded-2xl border border-border shadow-card p-6 space-y-4">
           <h2 className="font-semibold text-ink font-display">URL Selection Mode</h2>
-          <div className="flex gap-4">
-            <label className={`flex-1 flex items-start gap-3 p-4 rounded-xl border-2 cursor-pointer transition-colors ${mode === 'filters' ? 'border-primary bg-primary-light' : 'border-border hover:border-border-strong'}`}>
-              <input
-                type="radio"
-                name="mode"
-                value="filters"
-                checked={mode === 'filters'}
-                onChange={() => setMode('filters')}
-                className="mt-0.5 accent-primary"
-              />
-              <div>
-                <p className="font-medium text-ink text-sm">URL Filters</p>
-                <p className="text-muted text-xs mt-0.5">Specify URL patterns with counts (e.g. silver-coins:10)</p>
+
+          {/* Mode cards */}
+          <div className="grid grid-cols-3 gap-3">
+            {/* Select URLs (recommended) */}
+            <label className={`flex flex-col gap-1.5 p-4 rounded-xl border-2 cursor-pointer transition-colors ${mode === 'urls' ? 'border-primary bg-primary-light' : 'border-border hover:border-border-strong'}`}>
+              <div className="flex items-center gap-2">
+                <input type="radio" name="mode" value="urls" checked={mode === 'urls'} onChange={() => setMode('urls')} className="accent-primary" />
+                <span className="font-medium text-ink text-sm">Select URLs</span>
               </div>
+              <p className="text-muted text-xs pl-5">Pick specific pages from your URL Registry</p>
+              {mode === 'urls' && (
+                <span className="self-start mt-0.5 ml-5 text-[10px] font-semibold px-1.5 py-0.5 bg-primary text-white rounded-full">Recommended</span>
+              )}
             </label>
-            <label className={`flex-1 flex items-start gap-3 p-4 rounded-xl border-2 cursor-pointer transition-colors ${mode === 'limit' ? 'border-primary bg-primary-light' : 'border-border hover:border-border-strong'}`}>
-              <input
-                type="radio"
-                name="mode"
-                value="limit"
-                checked={mode === 'limit'}
-                onChange={() => setMode('limit')}
-                className="mt-0.5 accent-primary"
-              />
-              <div>
-                <p className="font-medium text-ink text-sm">Top N</p>
-                <p className="text-muted text-xs mt-0.5">Scrape the top N URLs from the source table</p>
+
+            {/* URL Filters */}
+            <label className={`flex flex-col gap-1.5 p-4 rounded-xl border-2 cursor-pointer transition-colors ${mode === 'filters' ? 'border-primary bg-primary-light' : 'border-border hover:border-border-strong'}`}>
+              <div className="flex items-center gap-2">
+                <input type="radio" name="mode" value="filters" checked={mode === 'filters'} onChange={() => setMode('filters')} className="accent-primary" />
+                <span className="font-medium text-ink text-sm">URL Filters</span>
               </div>
+              <p className="text-muted text-xs pl-5">Pattern + count (e.g. silver-coins:10)</p>
+            </label>
+
+            {/* Top N */}
+            <label className={`flex flex-col gap-1.5 p-4 rounded-xl border-2 cursor-pointer transition-colors ${mode === 'limit' ? 'border-primary bg-primary-light' : 'border-border hover:border-border-strong'}`}>
+              <div className="flex items-center gap-2">
+                <input type="radio" name="mode" value="limit" checked={mode === 'limit'} onChange={() => setMode('limit')} className="accent-primary" />
+                <span className="font-medium text-ink text-sm">Top N</span>
+              </div>
+              <p className="text-muted text-xs pl-5">Scan the first N URLs from the registry</p>
             </label>
           </div>
 
-          {/* URL Filters mode */}
+          {/* ── Select URLs mode ── */}
+          {mode === 'urls' && (
+            <URLSelector
+              selected={selectedURLIds}
+              onChange={setSelectedURLIds}
+            />
+          )}
+
+          {/* ── URL Filters mode ── */}
           {mode === 'filters' && (
             <div className="space-y-3">
               <div className="grid grid-cols-[1fr_100px_40px] gap-2 text-xs font-medium text-muted px-1">
-                <span>URL Pattern (2nd path segment)</span>
+                <span>URL Pattern (path segment)</span>
                 <span>Count</span>
                 <span />
               </div>
@@ -152,7 +379,7 @@ export default function NewScanPage() {
             </div>
           )}
 
-          {/* Limit mode */}
+          {/* ── Top N mode ── */}
           {mode === 'limit' && (
             <div className="max-w-xs">
               <label className="block text-sm font-medium text-ink-2 mb-1.5">Number of URLs</label>
@@ -164,7 +391,7 @@ export default function NewScanPage() {
                 onChange={(e) => setLimitN(parseInt(e.target.value) || 50)}
                 className="w-full px-4 py-2.5 rounded-xl border border-border bg-surface2 text-ink text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
               />
-              <p className="text-muted text-xs mt-1.5">Top N URLs from AISEO_PageSEOInputs</p>
+              <p className="text-muted text-xs mt-1.5">Top N active URLs from ClCode_URLs</p>
             </div>
           )}
         </div>
@@ -177,8 +404,8 @@ export default function NewScanPage() {
           <div className="text-sm text-blue-800">
             <p className="font-medium">Scan runs in the background</p>
             <p className="mt-0.5 text-blue-700">
-              The Python pipeline will scrape URLs, call Claude 3× per page, and store results in SQL Server.
-              Full scans may take 10–30 minutes. The scan detail page will auto-refresh while running.
+              The Python pipeline will scrape selected URLs, call Claude 3× per page, and store results in SQL Server.
+              Full scans may take 10–30 minutes. The scan detail page auto-refreshes while running.
             </p>
           </div>
         </div>
@@ -196,10 +423,7 @@ export default function NewScanPage() {
             className="flex items-center gap-2 px-6 py-2.5 bg-primary hover:bg-blue-600 text-white text-sm font-semibold rounded-xl transition-colors disabled:opacity-60 disabled:cursor-not-allowed shadow-sm"
           >
             {loading ? (
-              <>
-                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                Starting…
-              </>
+              <><Spinner /> Starting…</>
             ) : (
               <>
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">

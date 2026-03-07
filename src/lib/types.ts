@@ -145,6 +145,23 @@ export interface User {
   LastLoginAt: string | null;
 }
 
+// ─── Site URLs ────────────────────────────────────────────────────────────────
+
+export interface SiteURL {
+  URLID: number;
+  PageURL: string;
+  PageTitle: string | null;
+  TreeCluster: string | null;
+  IsActive: boolean;
+  Notes: string | null;
+  ScanRunCount: number;
+  SuggestionsApplied: number;
+  LastScanID: number | null;
+  LastScannedAt: string | null;
+  CreatedAt: string | null;
+  UpdatedAt: string | null;
+}
+
 // ─── Dashboard ───────────────────────────────────────────────────────────────
 
 export interface DashboardStats {
