@@ -20,7 +20,7 @@ export function Badge({
 }) {
   return (
     <span
-      className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[11px] font-semibold uppercase tracking-wide ${VARIANTS[variant]}`}
+      className={`inline-flex items-center px-2 py-0.5 rounded-full border text-sm font-semibold uppercase tracking-wide ${VARIANTS[variant]}`}
     >
       {children}
     </span>
@@ -67,7 +67,7 @@ export function CallTypeBadge({ type }: { type: string }) {
 }
 
 export function ScoreBadge({ score }: { score: number | null }) {
-  if (score === null) return <span className="text-muted text-xs">—</span>;
+  if (score === null) return <span className="text-muted text-sm">—</span>;
   const variant: Variant = score >= 8 ? 'green' : score >= 5 ? 'amber' : 'red';
   return <Badge variant={variant}>{score}/10</Badge>;
 }

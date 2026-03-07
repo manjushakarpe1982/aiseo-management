@@ -28,7 +28,7 @@ function RoleBadge({ role }: { role: string }) {
       ? 'bg-warning-light text-amber-800 border border-amber-200'
       : 'bg-surface2 text-muted border border-border';
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold ${cls}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded text-sm font-semibold ${cls}`}>
       {role}
     </span>
   );
@@ -166,7 +166,7 @@ export default function UsersPage() {
             )}
             <div className="grid grid-cols-2 gap-4 mb-4">
               <div>
-                <label className="block text-xs font-semibold text-ink-2 mb-1">Full Name</label>
+                <label className="block text-sm font-semibold text-ink-2 mb-1">Full Name</label>
                 <input
                   type="text" value={newName} onChange={(e) => setNewName(e.target.value)} required
                   placeholder="Jane Smith"
@@ -174,7 +174,7 @@ export default function UsersPage() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-ink-2 mb-1">Email</label>
+                <label className="block text-sm font-semibold text-ink-2 mb-1">Email</label>
                 <input
                   type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} required
                   placeholder="jane@boldpreciousmetals.com"
@@ -182,7 +182,7 @@ export default function UsersPage() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-ink-2 mb-1">Password</label>
+                <label className="block text-sm font-semibold text-ink-2 mb-1">Password</label>
                 <input
                   type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required
                   placeholder="Min 8 characters"
@@ -190,7 +190,7 @@ export default function UsersPage() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-ink-2 mb-1">Role</label>
+                <label className="block text-sm font-semibold text-ink-2 mb-1">Role</label>
                 <select
                   value={newRole} onChange={(e) => setNewRole(e.target.value)}
                   className="w-full px-3 py-2 rounded-lg border border-border bg-canvas text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
@@ -249,20 +249,20 @@ export default function UsersPage() {
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2.5">
                       <div className="w-8 h-8 rounded-full bg-primary-light flex items-center justify-center flex-shrink-0">
-                        <span className="text-primary font-bold text-xs">
+                        <span className="text-primary font-bold text-sm">
                           {u.FullName.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
                         </span>
                       </div>
                       <span className="font-medium text-ink">{u.FullName}</span>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-muted font-mono text-xs">{u.Email}</td>
+                  <td className="px-4 py-3 text-muted font-mono text-sm">{u.Email}</td>
                   <td className="px-4 py-3">
                     <select
                       value={u.Role}
                       onChange={(e) => handleRoleChange(u, e.target.value)}
                       disabled={saving}
-                      className="text-xs font-semibold border-0 bg-transparent focus:outline-none cursor-pointer"
+                      className="text-sm font-semibold border-0 bg-transparent focus:outline-none cursor-pointer"
                     >
                       <option>Admin</option>
                       <option>Editor</option>
@@ -270,7 +270,7 @@ export default function UsersPage() {
                     </select>
                   </td>
                   <td className="px-4 py-3">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold ${
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-sm font-semibold ${
                       u.IsActive
                         ? 'bg-success-light text-green-800 border border-green-200'
                         : 'bg-surface2 text-muted border border-border'
@@ -278,15 +278,15 @@ export default function UsersPage() {
                       {u.IsActive ? 'Active' : 'Inactive'}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-muted text-xs">{fmtDate(u.LastLoginAt)}</td>
-                  <td className="px-4 py-3 text-muted text-xs">{fmtDate(u.CreatedAt)}</td>
+                  <td className="px-4 py-3 text-muted text-sm">{fmtDate(u.LastLoginAt)}</td>
+                  <td className="px-4 py-3 text-muted text-sm">{fmtDate(u.CreatedAt)}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2 flex-wrap">
                       {/* Toggle Active */}
                       <button
                         onClick={() => handleToggleActive(u)}
                         disabled={saving}
-                        className={`text-xs font-medium px-2.5 py-1 rounded-lg border transition-colors ${
+                        className={`text-sm font-medium px-2.5 py-1 rounded-lg border transition-colors ${
                           u.IsActive
                             ? 'border-border text-muted hover:text-danger hover:border-red-200 hover:bg-danger-light'
                             : 'border-green-200 text-green-700 bg-success-light hover:bg-green-100'
@@ -303,18 +303,18 @@ export default function UsersPage() {
                             value={editingPwd[u.UserID]}
                             onChange={(e) => setEditingPwd((prev) => ({ ...prev, [u.UserID]: e.target.value }))}
                             placeholder="New password"
-                            className="text-xs px-2 py-1 rounded border border-border focus:outline-none focus:ring-1 focus:ring-primary/40 w-28"
+                            className="text-sm px-2 py-1 rounded border border-border focus:outline-none focus:ring-1 focus:ring-primary/40 w-28"
                           />
                           <button
                             onClick={() => handlePasswordReset(u.UserID)}
                             disabled={saving}
-                            className="text-xs font-medium px-2 py-1 rounded bg-primary text-white hover:bg-blue-700 transition-colors"
+                            className="text-sm font-medium px-2 py-1 rounded bg-primary text-white hover:bg-blue-700 transition-colors"
                           >
                             Save
                           </button>
                           <button
                             onClick={() => setEditingPwd((prev) => { const c = { ...prev }; delete c[u.UserID]; return c; })}
-                            className="text-xs text-muted hover:text-ink"
+                            className="text-sm text-muted hover:text-ink"
                           >
                             ✕
                           </button>
@@ -322,7 +322,7 @@ export default function UsersPage() {
                       ) : (
                         <button
                           onClick={() => setEditingPwd((prev) => ({ ...prev, [u.UserID]: '' }))}
-                          className="text-xs font-medium px-2.5 py-1 rounded-lg border border-border text-muted hover:text-ink hover:bg-surface2 transition-colors"
+                          className="text-sm font-medium px-2.5 py-1 rounded-lg border border-border text-muted hover:text-ink hover:bg-surface2 transition-colors"
                         >
                           Reset Pwd
                         </button>

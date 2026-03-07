@@ -116,7 +116,7 @@ export default function LoginPage() {
           </form>
         </div>
 
-        <p className="text-center text-xs text-muted mt-6">
+        <p className="text-center text-sm text-muted mt-6">
           boldpreciousmetals.com · AISEO v2
         </p>
       </div>

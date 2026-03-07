@@ -18,7 +18,7 @@ function pathOf(url: string) {
 
 function Badge({ active }: { active: boolean }) {
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold ${active ? 'bg-green-100 text-green-700' : 'bg-surface2 text-muted'}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-sm font-semibold ${active ? 'bg-green-100 text-green-700' : 'bg-surface2 text-muted'}`}>
       {active ? 'Active' : 'Inactive'}
     </span>
   );
@@ -83,7 +83,7 @@ function AddURLModal({ onClose, onAdded }: { onClose: () => void; onAdded: (u: S
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-ink-2 mb-1.5">Page Title <span className="text-muted text-xs font-normal">(optional)</span></label>
+            <label className="block text-sm font-medium text-ink-2 mb-1.5">Page Title <span className="text-muted text-sm font-normal">(optional)</span></label>
             <input
               type="text"
               value={pageTitle}
@@ -93,7 +93,7 @@ function AddURLModal({ onClose, onAdded }: { onClose: () => void; onAdded: (u: S
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-ink-2 mb-1.5">Notes <span className="text-muted text-xs font-normal">(optional)</span></label>
+            <label className="block text-sm font-medium text-ink-2 mb-1.5">Notes <span className="text-muted text-sm font-normal">(optional)</span></label>
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
@@ -354,7 +354,7 @@ export default function URLsPage() {
           <div>
             <p className="font-semibold text-ink">URL Registry not set up yet</p>
             <p className="text-muted text-sm mt-1">
-              Click below to create the <code className="bg-surface2 px-1 rounded text-xs">ClCode_URLs</code> table and import existing URLs from the legacy table.
+              Click below to create the <code className="bg-surface2 px-1 rounded text-sm">ClCode_URLs</code> table and import existing URLs from the legacy table.
             </p>
           </div>
           <button
@@ -409,7 +409,7 @@ export default function URLsPage() {
                 <button
                   key={f}
                   onClick={() => setFilterActive(f)}
-                  className={`text-xs px-3 py-1.5 rounded-full border font-medium transition-colors capitalize ${filterActive === f ? 'bg-primary text-white border-primary' : 'bg-surface text-muted border-border hover:border-primary/40 hover:text-ink'}`}
+                  className={`text-sm px-3 py-1.5 rounded-full border font-medium transition-colors capitalize ${filterActive === f ? 'bg-primary text-white border-primary' : 'bg-surface text-muted border-border hover:border-primary/40 hover:text-ink'}`}
                 >
                   {f === 'all' ? `All (${urls.length})` : f === 'active' ? `Active (${activeCount})` : `Inactive (${inactiveCount})`}
                 </button>
@@ -417,7 +417,7 @@ export default function URLsPage() {
             </div>
 
             {/* Result count */}
-            <span className="text-xs text-muted ml-auto">
+            <span className="text-sm text-muted ml-auto">
               {filtered.length !== urls.length ? `Showing ${filtered.length} of ${urls.length}` : `${urls.length} URLs`}
             </span>
           </div>
@@ -439,12 +439,12 @@ export default function URLsPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-surface2">
-                    <th className="text-left px-4 py-3 font-semibold text-ink-2 text-xs uppercase tracking-wide">URL / Path</th>
-                    <th className="text-left px-4 py-3 font-semibold text-ink-2 text-xs uppercase tracking-wide hidden lg:table-cell">Title</th>
-                    <th className="text-center px-4 py-3 font-semibold text-ink-2 text-xs uppercase tracking-wide">Status</th>
-                    <th className="text-center px-4 py-3 font-semibold text-ink-2 text-xs uppercase tracking-wide hidden md:table-cell">Scans</th>
-                    <th className="text-center px-4 py-3 font-semibold text-ink-2 text-xs uppercase tracking-wide hidden md:table-cell">Suggestions Applied</th>
-                    <th className="text-left px-4 py-3 font-semibold text-ink-2 text-xs uppercase tracking-wide hidden xl:table-cell">Last Scanned</th>
+                    <th className="text-left px-4 py-3 font-semibold text-ink-2 text-sm uppercase tracking-wide">URL / Path</th>
+                    <th className="text-left px-4 py-3 font-semibold text-ink-2 text-sm uppercase tracking-wide hidden lg:table-cell">Title</th>
+                    <th className="text-center px-4 py-3 font-semibold text-ink-2 text-sm uppercase tracking-wide">Status</th>
+                    <th className="text-center px-4 py-3 font-semibold text-ink-2 text-sm uppercase tracking-wide hidden md:table-cell">Scans</th>
+                    <th className="text-center px-4 py-3 font-semibold text-ink-2 text-sm uppercase tracking-wide hidden md:table-cell">Suggestions Applied</th>
+                    <th className="text-left px-4 py-3 font-semibold text-ink-2 text-sm uppercase tracking-wide hidden xl:table-cell">Last Scanned</th>
                     <th className="px-4 py-3" />
                   </tr>
                 </thead>
@@ -452,15 +452,15 @@ export default function URLsPage() {
                   {filtered.map((u) => (
                     <tr key={u.URLID} className="hover:bg-surface2/50 transition-colors">
                       <td className="px-4 py-3 max-w-xs">
-                        <div className="font-mono text-xs text-ink truncate" title={u.PageURL}>
+                        <div className="font-mono text-sm text-ink truncate" title={u.PageURL}>
                           {pathOf(u.PageURL)}
                         </div>
                         {u.TreeCluster && (
-                          <div className="text-[10px] text-muted mt-0.5">{u.TreeCluster}</div>
+                          <div className="text-sm text-muted mt-0.5">{u.TreeCluster}</div>
                         )}
                       </td>
                       <td className="px-4 py-3 hidden lg:table-cell">
-                        <span className="text-xs text-ink-2 truncate block max-w-[220px]" title={u.PageTitle ?? ''}>
+                        <span className="text-sm text-ink-2 truncate block max-w-[220px]" title={u.PageTitle ?? ''}>
                           {u.PageTitle ?? <span className="text-muted italic">—</span>}
                         </span>
                       </td>
@@ -468,12 +468,12 @@ export default function URLsPage() {
                         <Badge active={u.IsActive} />
                       </td>
                       <td className="px-4 py-3 text-center hidden md:table-cell">
-                        <span className="text-xs font-semibold text-ink">{u.ScanRunCount}</span>
+                        <span className="text-sm font-semibold text-ink">{u.ScanRunCount}</span>
                       </td>
                       <td className="px-4 py-3 text-center hidden md:table-cell">
-                        <span className="text-xs font-semibold text-ink">{u.SuggestionsApplied}</span>
+                        <span className="text-sm font-semibold text-ink">{u.SuggestionsApplied}</span>
                       </td>
-                      <td className="px-4 py-3 text-xs text-muted hidden xl:table-cell whitespace-nowrap">
+                      <td className="px-4 py-3 text-sm text-muted hidden xl:table-cell whitespace-nowrap">
                         {u.LastScannedAt ? fmtDate(u.LastScannedAt) : '—'}
                       </td>
                       <td className="px-4 py-3">

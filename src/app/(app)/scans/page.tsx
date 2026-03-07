@@ -79,7 +79,7 @@ export default function ScansPage() {
                     key={scan.ScanID}
                     className="border-b border-border/50 hover:bg-surface2 cursor-pointer transition-colors"
                   >
-                    <td className="px-6 py-4 text-muted font-mono text-xs">{scan.ScanID}</td>
+                    <td className="px-6 py-4 text-muted font-mono text-sm">{scan.ScanID}</td>
                     <td className="px-4 py-4">
                       <Link
                         href={`/scans/${scan.ScanID}`}
@@ -88,14 +88,14 @@ export default function ScansPage() {
                         {scan.ScanName}
                       </Link>
                       {scan.Notes && (
-                        <p className="text-muted text-xs mt-0.5 truncate max-w-xs">{scan.Notes}</p>
+                        <p className="text-muted text-sm mt-0.5 truncate max-w-xs">{scan.Notes}</p>
                       )}
                     </td>
                     <td className="px-4 py-4">
                       <ScanStatusBadge status={scan.Status} />
                     </td>
-                    <td className="px-4 py-4 text-muted text-xs">{fmtDate(scan.StartedAt)}</td>
-                    <td className="px-4 py-4 text-muted text-xs font-mono">{dur(scan.StartedAt, scan.EndedAt)}</td>
+                    <td className="px-4 py-4 text-muted text-sm">{fmtDate(scan.StartedAt)}</td>
+                    <td className="px-4 py-4 text-muted text-sm font-mono">{dur(scan.StartedAt, scan.EndedAt)}</td>
                     <td className="px-4 py-4 text-right font-mono">{scan.URLsScraped ?? '—'}</td>
                     <td className="px-4 py-4 text-right font-mono">{scan.TreesAnalysed ?? '—'}</td>
                     <td className="px-4 py-4 text-right font-mono">{(scan as any).CannibalizationCount ?? 0}</td>

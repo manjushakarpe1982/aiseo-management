@@ -26,7 +26,7 @@ function StatCard({
       <div>
         <p className="text-muted text-sm font-medium">{label}</p>
         <p className="text-ink text-3xl font-bold font-display mt-0.5">{value}</p>
-        {sub && <p className="text-muted text-xs mt-1">{sub}</p>}
+        {sub && <p className="text-muted text-sm mt-1">{sub}</p>}
       </div>
     </div>
   );
@@ -59,7 +59,7 @@ export default function Dashboard() {
     <div className="text-danger bg-danger-light border border-red-200 rounded-xl p-4">
       <p className="font-semibold">Dashboard Error</p>
       <p className="text-sm mt-1">{error}</p>
-      <p className="text-xs mt-2 text-muted">Check that SQL Server is reachable and the ClCode_ tables exist (run <code className="bg-red-100 px-1 rounded">python run_scan.py setup</code>)</p>
+      <p className="text-sm mt-2 text-muted">Check that SQL Server is reachable and the ClCode_ tables exist (run <code className="bg-red-100 px-1 rounded">python run_scan.py setup</code>)</p>
     </div>
   );
 
@@ -165,7 +165,7 @@ export default function Dashboard() {
                     >
                       {scan.ScanName}
                     </Link>
-                    <p className="text-muted text-xs mt-0.5">#{scan.ScanID}</p>
+                    <p className="text-muted text-sm mt-0.5">#{scan.ScanID}</p>
                   </td>
                   <td className="px-4 py-4">
                     <ScanStatusBadge status={scan.Status} />

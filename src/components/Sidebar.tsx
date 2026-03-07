@@ -108,7 +108,7 @@ export default function Sidebar() {
           {!collapsed && (
             <div className="overflow-hidden whitespace-nowrap">
               <p className="text-white font-semibold text-sm font-display leading-none">AISEO</p>
-              <p className="text-white/40 text-[11px] leading-none mt-0.5">Management System</p>
+              <p className="text-white/40 text-sm leading-none mt-0.5">Management System</p>
             </div>
           )}
         </div>
@@ -173,7 +173,7 @@ export default function Sidebar() {
                 className="w-8 h-8 rounded-full bg-primary flex items-center justify-center flex-shrink-0"
                 title={`${user.fullName} (${user.role})`}
               >
-                <span className="text-white text-xs font-bold">{initials}</span>
+                <span className="text-white text-sm font-bold">{initials}</span>
               </div>
               <button
                 onClick={handleLogout}
@@ -189,11 +189,11 @@ export default function Sidebar() {
           ) : (
             <div className="flex items-center gap-2.5 px-1">
               <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
-                <span className="text-white text-xs font-bold">{initials}</span>
+                <span className="text-white text-sm font-bold">{initials}</span>
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-white text-xs font-semibold truncate">{user.fullName}</p>
-                <p className="text-white/40 text-[10px] truncate">{user.role}</p>
+                <p className="text-white text-sm font-semibold truncate">{user.fullName}</p>
+                <p className="text-white/40 text-sm truncate">{user.role}</p>
               </div>
               <button
                 onClick={handleLogout}
@@ -216,7 +216,7 @@ export default function Sidebar() {
           )
         ) : (
           !collapsed && (
-            <p className="text-white/30 text-[11px] px-1 truncate">boldpreciousmetals.com</p>
+            <p className="text-white/30 text-sm px-1 truncate">boldpreciousmetals.com</p>
           )
         )}
       </div>

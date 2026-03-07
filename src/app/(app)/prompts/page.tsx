@@ -137,7 +137,7 @@ function AddPromptForm({ onCreated }: { onCreated: () => void }) {
 
         <div>
           <label className="block text-sm font-medium text-ink-2 mb-1.5">User Prompt Template</label>
-          <div className="text-xs text-muted mb-1.5">
+          <div className="text-sm text-muted mb-1.5">
             Available variables: <code className="bg-muted-light px-1 rounded">{'{PAGE_DATA}'}</code>{' '}
             <code className="bg-muted-light px-1 rounded">{'{TREE_NAME}'}</code>{' '}
             <code className="bg-muted-light px-1 rounded">{'{KEYWORD_MAP}'}</code>{' '}
@@ -170,7 +170,7 @@ function AddPromptForm({ onCreated }: { onCreated: () => void }) {
         )}
 
         <div className="flex items-center gap-3 pt-2">
-          <div className="flex gap-1.5 p-1.5 bg-warning-light border border-amber-200 rounded-xl text-xs text-amber-800">
+          <div className="flex gap-1.5 p-1.5 bg-warning-light border border-amber-200 rounded-xl text-sm text-amber-800">
             <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
             </svg>
@@ -264,7 +264,7 @@ export default function PromptsPage() {
                         className={`border-b border-border/50 hover:bg-surface2 cursor-pointer transition-colors ${p.IsActive ? 'bg-success-light/30' : ''}`}
                         onClick={() => toggleExpand(p.PromptID)}
                       >
-                        <td className="px-6 py-4 text-muted font-mono text-xs">{p.PromptID}</td>
+                        <td className="px-6 py-4 text-muted font-mono text-sm">{p.PromptID}</td>
                         <td className="px-4 py-4"><TypeBadge type={p.PromptType} /></td>
                         <td className="px-4 py-4 font-mono font-semibold text-ink">v{p.VersionNumber}</td>
                         <td className="px-4 py-4 text-ink-2">{p.VersionLabel ?? '—'}</td>
@@ -275,8 +275,8 @@ export default function PromptsPage() {
                             <Badge variant="gray">Inactive</Badge>
                           )}
                         </td>
-                        <td className="px-4 py-4 text-muted text-xs max-w-[200px] truncate">{p.Notes ?? '—'}</td>
-                        <td className="px-4 py-4 text-muted text-xs">{fmtDate(p.CreatedAt)}</td>
+                        <td className="px-4 py-4 text-muted text-sm max-w-[200px] truncate">{p.Notes ?? '—'}</td>
+                        <td className="px-4 py-4 text-muted text-sm">{fmtDate(p.CreatedAt)}</td>
                         <td className="px-4 py-4 text-right">
                           <svg
                             className={`w-4 h-4 text-muted inline transition-transform ${open ? 'rotate-180' : ''}`}
@@ -295,14 +295,14 @@ export default function PromptsPage() {
                                 { label: 'User Prompt Template', val: p.UserPromptTemplate },
                               ].map(({ label, val }) => (
                                 <div key={label}>
-                                  <p className="text-[10px] font-semibold text-muted uppercase mb-1.5">{label}</p>
-                                  <pre className="text-xs text-ink-2 bg-surface border border-border rounded-xl p-4 overflow-x-auto whitespace-pre-wrap max-h-64 font-mono">
+                                  <p className="text-sm font-semibold text-muted uppercase mb-1.5">{label}</p>
+                                  <pre className="text-sm text-ink-2 bg-surface border border-border rounded-xl p-4 overflow-x-auto whitespace-pre-wrap max-h-64 font-mono">
                                     {val}
                                   </pre>
                                 </div>
                               ))}
                               {p.DeactivatedAt && (
-                                <p className="text-xs text-muted">
+                                <p className="text-sm text-muted">
                                   Deactivated: {fmtDate(p.DeactivatedAt)}
                                 </p>
                               )}

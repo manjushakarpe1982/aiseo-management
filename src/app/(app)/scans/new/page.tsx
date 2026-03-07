@@ -151,13 +151,13 @@ function URLSelector({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search URLs…"
-              className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-border bg-surface2 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
+              className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-border bg-surface2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
             />
           </div>
           <button
             type="button"
             onClick={toggleAll}
-            className="text-xs px-2.5 py-1.5 rounded-lg border border-border text-ink-2 hover:bg-surface2 whitespace-nowrap transition-colors"
+            className="text-sm px-2.5 py-1.5 rounded-lg border border-border text-ink-2 hover:bg-surface2 whitespace-nowrap transition-colors"
           >
             {allFilteredSelected ? 'Deselect All' : 'Select All'}
           </button>
@@ -182,8 +182,8 @@ function URLSelector({
                     ref={(el) => { if (el) el.indeterminate = !groupAllSelected && groupSomeSelected; }}
                     className="accent-primary rounded w-3 h-3 flex-shrink-0"
                   />
-                  <span className="text-[10px] font-semibold text-ink uppercase tracking-wide">{cluster}</span>
-                  <span className="text-[10px] text-muted ml-auto">{groupURLs.length}</span>
+                  <span className="text-sm font-semibold text-ink uppercase tracking-wide">{cluster}</span>
+                  <span className="text-sm text-muted ml-auto">{groupURLs.length}</span>
                 </div>
                 {/* URLs in group */}
                 {groupURLs.map((u) => (
@@ -197,7 +197,7 @@ function URLSelector({
                       onChange={() => toggle(u.URLID)}
                       className="accent-primary rounded w-3 h-3 flex-shrink-0 mt-0.5"
                     />
-                    <span className="font-mono text-[11px] text-ink leading-tight break-all">
+                    <span className="font-mono text-sm text-ink leading-tight break-all">
                       {pathOf(u.PageURL)}
                     </span>
                   </label>
@@ -211,9 +211,9 @@ function URLSelector({
       {/* ── RIGHT: Selected URLs panel ───────────────────────────────────── */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold text-ink">
+          <span className="text-sm font-semibold text-ink">
             Selected
-            <span className="ml-1.5 px-1.5 py-0.5 bg-primary text-white rounded-full text-[10px] font-bold">
+            <span className="ml-1.5 px-1.5 py-0.5 bg-primary text-white rounded-full text-sm font-bold">
               {selected.size}
             </span>
           </span>
@@ -221,7 +221,7 @@ function URLSelector({
             <button
               type="button"
               onClick={clearAll}
-              className="text-[11px] text-muted hover:text-danger transition-colors"
+              className="text-sm text-muted hover:text-danger transition-colors"
             >
               Clear all
             </button>
@@ -234,13 +234,13 @@ function URLSelector({
               <svg className="w-8 h-8 mb-2 text-border" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
               </svg>
-              <p className="text-xs">No URLs selected yet.</p>
-              <p className="text-[11px] mt-0.5">Check URLs from the list on the left.</p>
+              <p className="text-sm">No URLs selected yet.</p>
+              <p className="text-sm mt-0.5">Check URLs from the list on the left.</p>
             </div>
           ) : (
             selectedObjects.map((u) => (
               <div key={u.URLID} className="flex items-start gap-2 px-3 py-1.5 group hover:bg-danger-light/50 transition-colors">
-                <span className="font-mono text-[11px] text-ink leading-tight break-all flex-1">
+                <span className="font-mono text-sm text-ink leading-tight break-all flex-1">
                   {pathOf(u.PageURL)}
                 </span>
                 <button
@@ -359,9 +359,9 @@ export default function NewScanPage() {
                 <input type="radio" name="mode" value="urls" checked={mode === 'urls'} onChange={() => setMode('urls')} className="accent-primary" />
                 <span className="font-medium text-ink text-sm">Select URLs</span>
               </div>
-              <p className="text-muted text-xs pl-5">Pick specific pages from your URL Registry</p>
+              <p className="text-muted text-sm pl-5">Pick specific pages from your URL Registry</p>
               {mode === 'urls' && (
-                <span className="self-start mt-0.5 ml-5 text-[10px] font-semibold px-1.5 py-0.5 bg-primary text-white rounded-full">Recommended</span>
+                <span className="self-start mt-0.5 ml-5 text-sm font-semibold px-1.5 py-0.5 bg-primary text-white rounded-full">Recommended</span>
               )}
             </label>
 
@@ -371,7 +371,7 @@ export default function NewScanPage() {
                 <input type="radio" name="mode" value="filters" checked={mode === 'filters'} onChange={() => setMode('filters')} className="accent-primary" />
                 <span className="font-medium text-ink text-sm">URL Filters</span>
               </div>
-              <p className="text-muted text-xs pl-5">Pattern + count (e.g. silver-coins:10)</p>
+              <p className="text-muted text-sm pl-5">Pattern + count (e.g. silver-coins:10)</p>
             </label>
 
             {/* Top N */}
@@ -380,7 +380,7 @@ export default function NewScanPage() {
                 <input type="radio" name="mode" value="limit" checked={mode === 'limit'} onChange={() => setMode('limit')} className="accent-primary" />
                 <span className="font-medium text-ink text-sm">Top N</span>
               </div>
-              <p className="text-muted text-xs pl-5">Scan the first N URLs from the registry</p>
+              <p className="text-muted text-sm pl-5">Scan the first N URLs from the registry</p>
             </label>
           </div>
 
@@ -395,7 +395,7 @@ export default function NewScanPage() {
           {/* ── URL Filters mode ── */}
           {mode === 'filters' && (
             <div className="space-y-3">
-              <div className="grid grid-cols-[1fr_100px_40px] gap-2 text-xs font-medium text-muted px-1">
+              <div className="grid grid-cols-[1fr_100px_40px] gap-2 text-sm font-medium text-muted px-1">
                 <span>URL Pattern (path segment)</span>
                 <span>Count</span>
                 <span />
@@ -454,7 +454,7 @@ export default function NewScanPage() {
                 onChange={(e) => setLimitN(parseInt(e.target.value) || 50)}
                 className="w-full px-4 py-2.5 rounded-xl border border-border bg-surface2 text-ink text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
               />
-              <p className="text-muted text-xs mt-1.5">Top N active URLs from ClCode_URLs</p>
+              <p className="text-muted text-sm mt-1.5">Top N active URLs from ClCode_URLs</p>
             </div>
           )}
         </div>
@@ -463,7 +463,7 @@ export default function NewScanPage() {
         <div className="bg-surface rounded-2xl border border-border shadow-card p-6 space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="font-semibold text-ink font-display">Analyses to Run</h2>
-            <span className="text-xs text-muted">{selectedAnalyses.length} of 3 selected</span>
+            <span className="text-sm text-muted">{selectedAnalyses.length} of 3 selected</span>
           </div>
 
           <div className="space-y-2">
@@ -477,7 +477,7 @@ export default function NewScanPage() {
               />
               <div className="min-w-0">
                 <p className="font-medium text-ink text-sm">Keyword Extraction</p>
-                <p className="text-muted text-xs mt-0.5">
+                <p className="text-muted text-sm mt-0.5">
                   Identifies primary keywords, search intent, keyword gaps and missing LSI terms per page.
                   Enriches the other two analyses when enabled.
                 </p>
@@ -494,7 +494,7 @@ export default function NewScanPage() {
               />
               <div className="min-w-0">
                 <p className="font-medium text-ink text-sm">Cannibalization Analysis</p>
-                <p className="text-muted text-xs mt-0.5">
+                <p className="text-muted text-sm mt-0.5">
                   Detects pages within the same tree cluster competing for the same keywords.
                   Requires at least 2 pages per cluster.
                 </p>
@@ -511,7 +511,7 @@ export default function NewScanPage() {
               />
               <div className="min-w-0">
                 <p className="font-medium text-ink text-sm">Content Improvements</p>
-                <p className="text-muted text-xs mt-0.5">
+                <p className="text-muted text-sm mt-0.5">
                   Suggests per-field improvements to meta title, description, H1, body copy and more.
                   Uses keyword context if Keyword Extraction is also enabled.
                 </p>
@@ -520,7 +520,7 @@ export default function NewScanPage() {
           </div>
 
           {selectedAnalyses.length === 0 && (
-            <p className="text-xs text-danger font-medium">⚠ Select at least one analysis to run.</p>
+            <p className="text-sm text-danger font-medium">⚠ Select at least one analysis to run.</p>
           )}
         </div>
 

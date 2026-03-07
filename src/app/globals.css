@@ -5,7 +5,7 @@
 @tailwind utilities;
 
 html {
-  font-size: 15px;
+  font-size: 16px;
 }
 
 body {
@@ -14,13 +14,13 @@ body {
   font-family: 'Outfit', sans-serif;
 }
 
-/* Table & content text slightly larger */
+/* Table & content text */
 table td, table th {
-  font-size: 0.92rem;
+  font-size: 1rem;
 }
 
 p, li, label, input, select, textarea {
-  font-size: 0.92rem;
+  font-size: 1rem;
 }
 
 @keyframes fadeSlideIn {
