@@ -45,6 +45,19 @@ function trunc(s: string | null | undefined, n = 120) {
   return s.length > n ? s.slice(0, n) + '…' : s;
 }
 
+function ActionedByChip({ name, at }: { name: string | null | undefined; at: string | null | undefined }) {
+  if (!name) return null;
+  return (
+    <span className="flex items-center gap-1 text-[10px] text-muted border border-border bg-surface2 px-2 py-0.5 rounded-full whitespace-nowrap flex-shrink-0">
+      <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+      </svg>
+      {name}
+      {at && <span className="text-muted/70">· {new Date(at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>}
+    </span>
+  );
+}
+
 // ─── Expand All toolbar ───────────────────────────────────────────────────────
 
 function ExpandToolbar({
@@ -296,6 +309,7 @@ function CannibalizationTab({ scanId }: { scanId: number }) {
                       </p>
                     </div>
                     <StatusBadge status={issue.Status} />
+                    <ActionedByChip name={issue.LastAuditedByName} at={issue.LastAuditedAt} />
                     <svg className={`w-4 h-4 text-muted transition-transform flex-shrink-0 ${open ? 'rotate-180' : ''}`}
                       fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
@@ -378,6 +392,16 @@ function CannibalizationTab({ scanId }: { scanId: number }) {
                       </div>
                     )}
 
+                    {issue.LastAuditedByName && (
+                      <p className="text-xs text-muted flex items-center gap-1.5">
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                        </svg>
+                        Last actioned by <span className="font-semibold text-ink-2">{issue.LastAuditedByName}</span>
+                        {issue.LastAuditedAt && <> on {fmtDate(issue.LastAuditedAt)}</>}
+                        {issue.UserComment && <> · &ldquo;{issue.UserComment}&rdquo;</>}
+                      </p>
+                    )}
                     <IssueStatusRow
                       id={issue.IssueID}
                       type="cannibalization"
@@ -473,6 +497,7 @@ function ContentTab({ scanId }: { scanId: number }) {
                       )}
                     </div>
                     <StatusBadge status={item.Status} />
+                    <ActionedByChip name={item.LastAuditedByName} at={item.LastAuditedAt} />
                     <svg className={`w-4 h-4 text-muted transition-transform flex-shrink-0 ${open ? 'rotate-180' : ''}`}
                       fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
@@ -547,6 +572,16 @@ function ContentTab({ scanId }: { scanId: number }) {
                       </div>
                     )}
 
+                    {item.LastAuditedByName && (
+                      <p className="text-xs text-muted flex items-center gap-1.5">
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                        </svg>
+                        Last actioned by <span className="font-semibold text-ink-2">{item.LastAuditedByName}</span>
+                        {item.LastAuditedAt && <> on {fmtDate(item.LastAuditedAt)}</>}
+                        {item.UserComment && <> · &ldquo;{item.UserComment}&rdquo;</>}
+                      </p>
+                    )}
                     <IssueStatusRow
                       id={item.ImprovementID}
                       type="improvement"

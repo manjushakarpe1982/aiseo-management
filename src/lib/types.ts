@@ -60,6 +60,7 @@ export interface CannibalizationIssue {
   Reasoning: string | null;
   Status: 'Yet to Act' | 'Acted' | 'Deferred';
   LastAuditedByUserID: number | null;
+  LastAuditedByName: string | null;  // joined from ClCode_Users
   LastAuditedAt: string | null;
   UserComment: string | null;
   DeferredReason: string | null;
@@ -87,6 +88,7 @@ export interface ContentImprovement {
   ImpactEstimate: string | null;
   Status: 'Yet to Act' | 'Acted' | 'Deferred';
   LastAuditedByUserID: number | null;
+  LastAuditedByName: string | null;  // joined from ClCode_Users
   LastAuditedAt: string | null;
   UserComment: string | null;
   DeferredReason: string | null;
@@ -128,6 +130,19 @@ export interface Prompt {
   CreatedByUserID: number | null;
   DeactivatedAt: string | null;
   DeactivatedByUserID: number | null;
+}
+
+// ─── Users ───────────────────────────────────────────────────────────────────
+
+export interface User {
+  UserID: number;
+  FullName: string;
+  Email: string;
+  Role: string;
+  IsActive: boolean;
+  CreatedAt: string | null;
+  CreatedByUserID: number | null;
+  LastLoginAt: string | null;
 }
 
 // ─── Dashboard ───────────────────────────────────────────────────────────────

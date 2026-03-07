@@ -14,18 +14,21 @@ export async function GET(
       .input('id', sql.Int, id)
       .query(`
         SELECT
-          IssueID, ScanID, PromptID, TreeCluster, CannibalKeyword,
-          Severity, SeverityReason,
-          URL1, URL1_FieldName, URL1_CurrentContent, URL1_SuggestedFix,
-          URL2, URL2_FieldName, URL2_CurrentContent, URL2_SuggestedFix,
-          OverallRecommendation, Reasoning,
-          Status, LastAuditedAt, UserComment, DeferredReason,
-          VerifiedFixed, VerifiedInScanID, CreatedAt
-        FROM ClCode_CannibalizationIssues
-        WHERE ScanID = @id
+          c.IssueID, c.ScanID, c.PromptID, c.TreeCluster, c.CannibalKeyword,
+          c.Severity, c.SeverityReason,
+          c.URL1, c.URL1_FieldName, c.URL1_CurrentContent, c.URL1_SuggestedFix,
+          c.URL2, c.URL2_FieldName, c.URL2_CurrentContent, c.URL2_SuggestedFix,
+          c.OverallRecommendation, c.Reasoning,
+          c.Status, c.LastAuditedByUserID, c.LastAuditedAt,
+          c.UserComment, c.DeferredReason,
+          c.VerifiedFixed, c.VerifiedInScanID, c.CreatedAt,
+          u.FullName AS LastAuditedByName
+        FROM ClCode_CannibalizationIssues c
+        LEFT JOIN ClCode_Users u ON u.UserID = c.LastAuditedByUserID
+        WHERE c.ScanID = @id
         ORDER BY
-          CASE Severity WHEN 'High' THEN 1 WHEN 'Medium' THEN 2 ELSE 3 END,
-          TreeCluster
+          CASE c.Severity WHEN 'High' THEN 1 WHEN 'Medium' THEN 2 ELSE 3 END,
+          c.TreeCluster
       `);
     return NextResponse.json(result.recordset);
   } catch (err) {

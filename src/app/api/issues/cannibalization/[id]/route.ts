@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, sql } from '@/lib/db';
+import { getSessionUser } from '@/lib/session';
 
 export async function PATCH(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const session = await getSessionUser(req);
+  if (!session) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+
   const id = parseInt(params.id);
   if (isNaN(id)) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
 
@@ -19,7 +23,6 @@ export async function PATCH(
   try {
     const db = await getDb();
 
-    // Get current value for audit log
     const current = await db.request()
       .input('id', sql.Int, id)
       .query(`SELECT Status, UserComment, URL1 FROM ClCode_CannibalizationIssues WHERE IssueID = @id`);
@@ -35,6 +38,7 @@ export async function PATCH(
       .input('status', sql.NVarChar, status ?? old.Status)
       .input('comment', sql.NVarChar, comment ?? null)
       .input('deferredReason', sql.NVarChar, deferredReason ?? null)
+      .input('userId', sql.Int, session.userId)
       .query(`
         UPDATE ClCode_CannibalizationIssues
         SET
@@ -42,11 +46,10 @@ export async function PATCH(
           UserComment = @comment,
           DeferredReason = @deferredReason,
           LastAuditedAt = GETUTCDATE(),
-          LastAuditedByUserID = 1
+          LastAuditedByUserID = @userId
         WHERE IssueID = @id
       `);
 
-    // Write audit log
     await db.request()
       .input('entityType', sql.NVarChar, 'CannibalizationIssue')
       .input('entityID', sql.Int, id)
@@ -55,12 +58,13 @@ export async function PATCH(
       .input('oldValue', sql.NVarChar, old.Status)
       .input('newValue', sql.NVarChar, status ?? old.Status)
       .input('comment', sql.NVarChar, comment ?? null)
+      .input('userId', sql.Int, session.userId)
       .query(`
         INSERT INTO ClCode_AuditLog
           (AuditedByUserID, AuditedAt, EntityType, EntityID, EntityURL,
            ActionType, OldValue, NewValue, Comment)
         VALUES
-          (1, GETUTCDATE(), @entityType, @entityID, @entityURL,
+          (@userId, GETUTCDATE(), @entityType, @entityID, @entityURL,
            @actionType, @oldValue, @newValue, @comment)
       `);
 

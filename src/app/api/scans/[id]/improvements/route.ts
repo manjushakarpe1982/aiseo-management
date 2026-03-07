@@ -14,17 +14,20 @@ export async function GET(
       .input('id', sql.Int, id)
       .query(`
         SELECT
-          ImprovementID, ScanID, PromptID, TreeCluster, PageURL,
-          FieldName, CurrentContent, CurrentCharCount,
-          SuggestedContent, SuggestedCharCount,
-          IssueType, Reasoning, Priority, ImpactEstimate,
-          Status, LastAuditedAt, UserComment, DeferredReason,
-          VerifiedFixed, VerifiedInScanID, CreatedAt
-        FROM ClCode_ContentImprovements
-        WHERE ScanID = @id
+          ci.ImprovementID, ci.ScanID, ci.PromptID, ci.TreeCluster, ci.PageURL,
+          ci.FieldName, ci.CurrentContent, ci.CurrentCharCount,
+          ci.SuggestedContent, ci.SuggestedCharCount,
+          ci.IssueType, ci.Reasoning, ci.Priority, ci.ImpactEstimate,
+          ci.Status, ci.LastAuditedByUserID, ci.LastAuditedAt,
+          ci.UserComment, ci.DeferredReason,
+          ci.VerifiedFixed, ci.VerifiedInScanID, ci.CreatedAt,
+          u.FullName AS LastAuditedByName
+        FROM ClCode_ContentImprovements ci
+        LEFT JOIN ClCode_Users u ON u.UserID = ci.LastAuditedByUserID
+        WHERE ci.ScanID = @id
         ORDER BY
-          CASE Priority WHEN 'High' THEN 1 WHEN 'Medium' THEN 2 ELSE 3 END,
-          PageURL
+          CASE ci.Priority WHEN 'High' THEN 1 WHEN 'Medium' THEN 2 ELSE 3 END,
+          ci.PageURL
       `);
     return NextResponse.json(result.recordset);
   } catch (err) {

@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
 import './globals.css';
-import Sidebar from '@/components/Sidebar';
 
 export const metadata: Metadata = {
   title: 'AISEO Management System',
@@ -18,10 +17,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           rel="stylesheet"
         />
       </head>
-      <body className="flex h-screen overflow-hidden bg-canvas">
-        <Sidebar />
-        <main className="flex-1 overflow-y-auto p-8">{children}</main>
-      </body>
+      <body className="bg-canvas text-ink">{children}</body>
     </html>
   );
 }
