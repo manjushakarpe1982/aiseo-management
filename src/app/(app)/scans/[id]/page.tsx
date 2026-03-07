@@ -420,12 +420,57 @@ function CannibalizationTab({ scanId }: { scanId: number }) {
   );
 }
 
+// ─── Filter pill row ──────────────────────────────────────────────────────────
+
+function FilterPills<T extends string>({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string;
+  options: readonly T[];
+  value: T;
+  onChange: (v: T) => void;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-xs font-semibold text-muted uppercase tracking-wide w-14 flex-shrink-0">{label}</span>
+      <div className="flex gap-1 flex-wrap">
+        {options.map((opt) => (
+          <button
+            key={opt}
+            onClick={() => onChange(opt)}
+            className={`text-xs px-2.5 py-1 rounded-full border font-medium transition-colors ${
+              value === opt
+                ? 'bg-primary text-white border-primary'
+                : 'bg-surface text-muted border-border hover:border-primary/40 hover:text-ink'
+            }`}
+          >
+            {opt}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── Content Improvements Tab ─────────────────────────────────────────────────
+
+const PRIORITY_OPTIONS = ['All', 'High', 'Medium', 'Low'] as const;
+const STATUS_OPTIONS   = ['All', 'Yet to Act', 'Acted', 'Deferred'] as const;
+type PriorityFilter = typeof PRIORITY_OPTIONS[number];
+type StatusFilter   = typeof STATUS_OPTIONS[number];
 
 function ContentTab({ scanId }: { scanId: number }) {
   const [items, setItems] = useState<ContentImprovement[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
+
+  // ── Filter state ──
+  const [filterPriority, setFilterPriority] = useState<PriorityFilter>('All');
+  const [filterStatus,   setFilterStatus]   = useState<StatusFilter>('All');
+  const [filterPage,     setFilterPage]     = useState<string>('All');
 
   useEffect(() => {
     fetch(`/api/scans/${scanId}/improvements`)
@@ -437,19 +482,95 @@ function ContentTab({ scanId }: { scanId: number }) {
     setItems((prev) => prev.map((i) => i.ImprovementID === id ? { ...i, Status: status as any, UserComment: comment } : i));
   };
 
+  // ── Derived: unique pages for dropdown ──
+  const uniquePages = Array.from(new Set(items.map((i) => i.PageURL ?? 'Unknown'))).sort();
+
+  // ── Filtered items ──
+  const filtered = items.filter((i) => {
+    if (filterPriority !== 'All' && i.Priority !== filterPriority) return false;
+    if (filterStatus   !== 'All' && i.Status   !== filterStatus)   return false;
+    if (filterPage     !== 'All' && (i.PageURL ?? 'Unknown') !== filterPage) return false;
+    return true;
+  });
+
+  const isFiltered = filterPriority !== 'All' || filterStatus !== 'All' || filterPage !== 'All';
+
+  const clearFilters = () => {
+    setFilterPriority('All');
+    setFilterStatus('All');
+    setFilterPage('All');
+  };
+
   const toggle = (id: number) => setExpanded((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
-  const expandAll = () => setExpanded(new Set(items.map((i) => i.ImprovementID)));
+  const expandAll  = () => setExpanded(new Set(filtered.map((i) => i.ImprovementID)));
   const collapseAll = () => setExpanded(new Set());
 
   if (loading) return <Spinner />;
   if (items.length === 0) return <Empty msg="No content improvements for this scan." />;
 
-  const grouped = groupBy(items, (i) => i.PageURL ?? 'Unknown');
+  const grouped = groupBy(filtered, (i) => i.PageURL ?? 'Unknown');
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
+
+      {/* ── Filter bar ── */}
+      <div className="bg-surface border border-border rounded-xl px-4 py-3.5 space-y-3">
+        <FilterPills
+          label="Priority"
+          options={PRIORITY_OPTIONS}
+          value={filterPriority}
+          onChange={setFilterPriority}
+        />
+        <FilterPills
+          label="Status"
+          options={STATUS_OPTIONS}
+          value={filterStatus}
+          onChange={setFilterStatus}
+        />
+
+        {/* Page dropdown */}
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-muted uppercase tracking-wide w-14 flex-shrink-0">Page</span>
+          <select
+            value={filterPage}
+            onChange={(e) => setFilterPage(e.target.value)}
+            className="text-xs px-3 py-1.5 rounded-lg border border-border bg-canvas text-ink focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary max-w-sm"
+          >
+            <option value="All">All pages ({uniquePages.length})</option>
+            {uniquePages.map((p) => (
+              <option key={p} value={p}>
+                {p.replace('https://www.boldpreciousmetals.com', '…')}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Result count + clear */}
+        <div className="flex items-center justify-between pt-1 border-t border-border/60">
+          <p className="text-xs text-muted">
+            Showing <span className="font-semibold text-ink">{filtered.length}</span> of{' '}
+            <span className="font-semibold">{items.length}</span> improvements
+          </p>
+          {isFiltered && (
+            <button
+              onClick={clearFilters}
+              className="text-xs text-primary hover:text-blue-700 font-medium flex items-center gap-1"
+            >
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+              Clear filters
+            </button>
+          )}
+        </div>
+      </div>
+
+      {filtered.length === 0 ? (
+        <Empty msg="No improvements match the selected filters." />
+      ) : (
+        <>
       <ExpandToolbar
-        total={items.length}
+        total={filtered.length}
         expandedCount={expanded.size}
         onExpandAll={expandAll}
         onCollapseAll={collapseAll}
@@ -596,6 +717,8 @@ function ContentTab({ scanId }: { scanId: number }) {
           })}
         </div>
       ))}
+        </>
+      )}
     </div>
   );
 }
