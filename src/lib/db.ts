@@ -7,7 +7,7 @@ const config: sql.config = {
   user: process.env.DB_USER || 'sa',
   password: process.env.DB_PASSWORD || 'ash@2011',
   options: {
-    encrypt: true,
+    encrypt: false,           // IP-based host — TLS SNI rejects IP as servername
     trustServerCertificate: true,
     enableArithAbort: true,
     connectTimeout: 30000,

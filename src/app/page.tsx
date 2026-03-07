@@ -44,12 +44,23 @@ export default function Dashboard() {
   useEffect(() => {
     fetch('/api/dashboard')
       .then((r) => r.json())
-      .then(setStats)
-      .catch(() => setError('Failed to load dashboard'));
+      .then((data) => {
+        if (data?.error) {
+          setError(data.error);
+        } else {
+          // Ensure recentScans is always an array
+          setStats({ ...data, recentScans: data.recentScans ?? [] });
+        }
+      })
+      .catch((err) => setError('Failed to load dashboard: ' + err.message));
   }, []);
 
   if (error) return (
-    <div className="text-danger bg-danger-light border border-red-200 rounded-xl p-4">{error}</div>
+    <div className="text-danger bg-danger-light border border-red-200 rounded-xl p-4">
+      <p className="font-semibold">Dashboard Error</p>
+      <p className="text-sm mt-1">{error}</p>
+      <p className="text-xs mt-2 text-muted">Check that SQL Server is reachable and the ClCode_ tables exist (run <code className="bg-red-100 px-1 rounded">python run_scan.py setup</code>)</p>
+    </div>
   );
 
   if (!stats) return (
