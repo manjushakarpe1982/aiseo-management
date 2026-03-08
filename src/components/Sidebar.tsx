@@ -108,34 +108,24 @@ export default function Sidebar() {
         collapsed ? 'w-[68px]' : 'w-64'
       }`}
     >
-      {/* Logo + collapse toggle */}
-      <div className={`flex items-center border-b border-white/10 h-[68px] ${collapsed ? 'justify-center px-0' : 'px-4 justify-between'}`}>
-        <div className="flex items-center gap-3 overflow-hidden">
-          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center flex-shrink-0">
-            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
-          </div>
-          {!collapsed && (
-            <div className="overflow-hidden whitespace-nowrap">
-              <p className="text-white font-semibold text-sm font-display leading-none">AISEO</p>
-              <p className="text-white/40 text-sm leading-none mt-0.5">Management System</p>
-            </div>
-          )}
-        </div>
-
+      {/* Logo + collapse toggle — hamburger IS the logo button */}
+      <div className="flex items-center border-b border-white/10 h-[68px] px-3">
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className={`w-7 h-7 flex items-center justify-center rounded-md text-white/50 hover:text-white hover:bg-white/10 transition-colors flex-shrink-0 ${collapsed ? 'mt-0' : ''}`}
           title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          className="w-8 h-8 rounded-lg bg-primary hover:bg-blue-600 flex items-center justify-center flex-shrink-0 transition-colors"
         >
-          <svg
-            className={`w-4 h-4 transition-transform duration-300 ${collapsed ? 'rotate-180' : ''}`}
-            fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M11 19l-7-7 7-7M18 19l-7-7 7-7" />
+          <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         </button>
+
+        {!collapsed && (
+          <div className="overflow-hidden whitespace-nowrap ml-3">
+            <p className="text-white font-semibold text-sm font-display leading-none">AISEO</p>
+            <p className="text-white/40 text-sm leading-none mt-0.5">Management System</p>
+          </div>
+        )}
       </div>
 
       {/* Nav */}
