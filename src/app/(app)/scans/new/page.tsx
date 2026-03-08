@@ -277,6 +277,7 @@ export default function NewScanPage() {
     cannibalization: true,
     content: true,
   });
+  const [provider, setProvider] = useState<'claude' | 'gemini'>('claude');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -312,6 +313,7 @@ export default function NewScanPage() {
           limitN: mode === 'limit' ? limitN : undefined,
           selectedURLIds: mode === 'urls' ? Array.from(selectedURLIds) : undefined,
           analyses: selectedAnalyses,
+          provider,
         }),
       });
       const data = await res.json();
@@ -524,6 +526,50 @@ export default function NewScanPage() {
           )}
         </div>
 
+        {/* AI Provider */}
+        <div className="bg-surface rounded-2xl border border-border shadow-card p-6 space-y-4">
+          <h2 className="font-semibold text-ink font-display">AI Provider</h2>
+          <div className="grid grid-cols-2 gap-3">
+            {/* Claude */}
+            <label className={`flex items-start gap-3 p-4 rounded-xl border-2 cursor-pointer transition-colors ${provider === 'claude' ? 'border-primary bg-primary-light' : 'border-border hover:border-border-strong'}`}>
+              <input
+                type="radio"
+                name="provider"
+                value="claude"
+                checked={provider === 'claude'}
+                onChange={() => setProvider('claude')}
+                className="mt-0.5 accent-primary flex-shrink-0"
+              />
+              <div className="min-w-0">
+                <p className="font-medium text-ink text-sm">Claude (Anthropic)</p>
+                <p className="text-muted text-sm mt-0.5">claude-sonnet-4 · Prompt caching enabled</p>
+                {provider === 'claude' && (
+                  <span className="inline-block mt-1 text-sm font-semibold px-1.5 py-0.5 bg-primary text-white rounded-full">Recommended</span>
+                )}
+              </div>
+            </label>
+
+            {/* Gemini */}
+            <label className={`flex items-start gap-3 p-4 rounded-xl border-2 cursor-pointer transition-colors ${provider === 'gemini' ? 'border-primary bg-primary-light' : 'border-border hover:border-border-strong'}`}>
+              <input
+                type="radio"
+                name="provider"
+                value="gemini"
+                checked={provider === 'gemini'}
+                onChange={() => setProvider('gemini')}
+                className="mt-0.5 accent-primary flex-shrink-0"
+              />
+              <div className="min-w-0">
+                <p className="font-medium text-ink text-sm">Gemini (Google)</p>
+                <p className="text-muted text-sm mt-0.5">gemini-2.0-flash · Lower cost per token</p>
+              </div>
+            </label>
+          </div>
+          <p className="text-sm text-muted">
+            Configure API keys in <a href="/settings" className="text-primary hover:underline">Settings</a> before running.
+          </p>
+        </div>
+
         {/* Info box */}
         <div className="flex gap-3 p-4 bg-blue-50 border border-blue-200 rounded-xl">
           <svg className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
@@ -532,7 +578,7 @@ export default function NewScanPage() {
           <div className="text-sm text-blue-800">
             <p className="font-medium">Scan runs in the background</p>
             <p className="mt-0.5 text-blue-700">
-              The Python pipeline will scrape selected URLs, call Claude 3× per page, and store results in SQL Server.
+              The Python pipeline will scrape selected URLs, call the selected AI provider 3× per page, and store results in SQL Server.
               Full scans may take 10–30 minutes. The scan detail page auto-refreshes while running.
             </p>
           </div>

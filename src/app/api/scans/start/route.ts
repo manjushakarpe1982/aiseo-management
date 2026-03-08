@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
     if (!session) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
     const body = await req.json();
-    const { scanName, mode, urlFilters, limitN, selectedURLIds, analyses } = body;
+    const { scanName, mode, urlFilters, limitN, selectedURLIds, analyses, provider } = body;
 
     // analyses is an array of enabled phases e.g. ['keyword','cannibalization','content']
     const runKeyword         = !analyses || (analyses as string[]).includes('keyword');
@@ -87,6 +87,9 @@ export async function POST(req: NextRequest) {
     if (!runKeyword)         args.push('--skip-keyword');
     if (!runCannibalization) args.push('--skip-cannibalization');
     if (!runContent)         args.push('--skip-content');
+
+    // AI provider
+    if (provider === 'gemini') args.push('--provider', 'gemini');
 
     args.push('--report');
 
