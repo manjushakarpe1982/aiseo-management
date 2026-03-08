@@ -11,6 +11,8 @@ Full pipeline:
   Phase 5   Completion
 """
 
+from __future__ import annotations
+
 import json
 import re
 import time
@@ -24,11 +26,31 @@ from playwright.sync_api import sync_playwright
 from .config import (
     ANTHROPIC_API_KEY,
     CLAUDE_MODEL,
+    MAX_INPUT_CHARS,
+    MAX_INPUT_TOKENS,
     TP,
     URL_SOURCE_COLUMN,
     URL_SOURCE_TABLE,
+    get_model_pricing,
+    get_model_cache_pricing,
 )
 from .db import get_connection
+
+# ── Prompt-size guard ─────────────────────────────────────────────────────────
+
+class PromptTooLargeError(Exception):
+    """
+    Raised (and logged to ClCode_ClaudeCallLog) when the combined prompt
+    exceeds MAX_INPUT_TOKENS before making the Claude API call.
+    """
+    def __init__(self, total_chars: int, tokens_estimate: int):
+        self.total_chars    = total_chars
+        self.tokens_estimate = tokens_estimate
+        super().__init__(
+            f"Prompt too large: {total_chars:,} chars "
+            f"(~{tokens_estimate:,} tokens, limit {MAX_INPUT_TOKENS:,})"
+        )
+
 
 # ── Claude client (lazy — initialised at the start of each run_scan call) ─
 
@@ -72,18 +94,38 @@ def _init_claude_client(conn) -> None:
     print(f"  Claude client initialised  (key: {masked})")
 
 
-def _call_claude(system_prompt: str, user_message: str) -> str:
-    """Raw Claude API call with rate-limit retry. 3 s sleep after each call."""
+def _call_claude(system_prompt: str, user_message: str) -> tuple:
+    """
+    Raw Claude API call with prompt caching + rate-limit retry. 3 s sleep after each call.
+
+    The system prompt is always sent with cache_control so Anthropic caches it
+    server-side.  On the first call the content is written to cache (costs +25 %
+    of normal input price); every subsequent call within the 5-minute cache window
+    reads from cache (costs only 10 % of normal input price).
+
+    Returns (text, input_tokens, output_tokens, cache_write_tokens, cache_read_tokens).
+    """
     for attempt in range(3):
         try:
             response = _claude.messages.create(
                 model=CLAUDE_MODEL,
                 max_tokens=8192,
-                system=system_prompt,
+                system=[
+                    {
+                        "type": "text",
+                        "text": system_prompt,
+                        "cache_control": {"type": "ephemeral"},
+                    }
+                ],
                 messages=[{"role": "user", "content": user_message}],
             )
             time.sleep(3)   # stay within 30k tokens/min rate limit
-            return response.content[0].text
+            usage       = response.usage
+            in_tok      = getattr(usage, "input_tokens",                  0) or 0
+            out_tok     = getattr(usage, "output_tokens",                 0) or 0
+            cache_write = getattr(usage, "cache_creation_input_tokens",   0) or 0
+            cache_read  = getattr(usage, "cache_read_input_tokens",       0) or 0
+            return response.content[0].text, in_tok, out_tok, cache_write, cache_read
         except Exception as exc:
             if "rate_limit" in str(exc).lower() and attempt < 2:
                 wait = 30 * (attempt + 1)   # 30s then 60s
@@ -101,23 +143,17 @@ def _call_claude_logged(conn, scan_id: int, call_type: str, entity_url: str,
 
     call_type: "KeywordExtraction" | "Cannibalization" | "ContentImprovement"
     entity_url: page URL (4a/4c) or tree cluster name (4b)
-    Always re-raises any exception so the caller can handle it.
-    """
-    called_at  = datetime.utcnow()
-    t0         = time.time()
-    raw        = None
-    succeeded  = False
-    error_msg  = None
 
-    try:
-        raw = _call_claude(system_prompt, user_message)
-        succeeded = True
-        return raw
-    except Exception as exc:
-        error_msg = str(exc)[:2000]
-        raise
-    finally:
-        duration_ms = int((time.time() - t0) * 1000)
+    Raises PromptTooLargeError (already logged) if prompt exceeds MAX_INPUT_TOKENS.
+    Always re-raises any other exception so the caller can handle it.
+    """
+    total_chars     = len(system_prompt) + len(user_message)
+    tokens_estimate = total_chars // 4   # 4 chars ≈ 1 token
+
+    # ── Size guard: skip before touching the API ──────────────────────────
+    if tokens_estimate > MAX_INPUT_TOKENS:
+        err = PromptTooLargeError(total_chars, tokens_estimate)
+        print(f"    SKIPPED — {err}")
         try:
             cursor = conn.cursor()
             cursor.execute(
@@ -125,16 +161,97 @@ def _call_claude_logged(conn, scan_id: int, call_type: str, entity_url: str,
                 INSERT INTO {TP}ClaudeCallLog
                     (ScanID, CallType, EntityURL, SystemPrompt, UserMessage,
                      RawResponse, CallSucceeded, InputCharsEstimate,
-                     OutputCharsEstimate, CalledAt, DurationMs, ErrorMessage)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                     OutputCharsEstimate, InputTokens, OutputTokens, CostUSD,
+                     CalledAt, DurationMs, ErrorMessage)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                """,
+                (
+                    scan_id, call_type, entity_url,
+                    system_prompt[:4000],   # store enough to be diagnostic
+                    user_message[:4000],
+                    None,                   # no response
+                    0,                      # CallSucceeded = false
+                    total_chars,
+                    0,
+                    0, 0, 0.0,
+                    datetime.utcnow(),
+                    0,
+                    f"SKIPPED: prompt too large — {total_chars:,} chars "
+                    f"(~{tokens_estimate:,} tokens). "
+                    f"Limit is {MAX_INPUT_TOKENS:,} tokens.",
+                ),
+            )
+            conn.commit()
+        except Exception as log_exc:
+            print(f"    WARNING: Failed to log skipped call: {log_exc}")
+        raise err
+
+    # ── Normal path ───────────────────────────────────────────────────────
+    called_at   = datetime.utcnow()
+    t0          = time.time()
+    raw         = None
+    in_tok      = 0
+    out_tok     = 0
+    cache_write = 0
+    cache_read  = 0
+    succeeded   = False
+    error_msg   = None
+
+    try:
+        raw, in_tok, out_tok, cache_write, cache_read = _call_claude(system_prompt, user_message)
+        succeeded = True
+        in_price, out_price       = get_model_pricing(CLAUDE_MODEL)
+        cw_price, cr_price        = get_model_cache_pricing(CLAUDE_MODEL)
+        cost = (
+            in_tok      * in_price
+            + out_tok   * out_price
+            + cache_write * cw_price
+            + cache_read  * cr_price
+        ) / 1_000_000
+        cache_label = (
+            f"  cache_write={cache_write:,}" if cache_write else
+            f"  cache_read={cache_read:,}"   if cache_read  else
+            ""
+        )
+        print(f"    tokens in={in_tok:,}  out={out_tok:,}{cache_label}  cost=${cost:.5f}")
+        return raw
+    except Exception as exc:
+        error_msg = str(exc)[:2000]
+        raise
+    finally:
+        duration_ms = int((time.time() - t0) * 1000)
+        in_price, out_price   = get_model_pricing(CLAUDE_MODEL)
+        cw_price, cr_price    = get_model_cache_pricing(CLAUDE_MODEL)
+        cost_usd = (
+            in_tok      * in_price
+            + out_tok   * out_price
+            + cache_write * cw_price
+            + cache_read  * cr_price
+        ) / 1_000_000
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                f"""
+                INSERT INTO {TP}ClaudeCallLog
+                    (ScanID, CallType, EntityURL, SystemPrompt, UserMessage,
+                     RawResponse, CallSucceeded, InputCharsEstimate,
+                     OutputCharsEstimate, InputTokens, OutputTokens,
+                     CacheWriteTokens, CacheReadTokens,
+                     CostUSD, CalledAt, DurationMs, ErrorMessage)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
                     scan_id, call_type, entity_url,
                     system_prompt, user_message,
                     raw,
                     1 if succeeded else 0,
-                    len(system_prompt) + len(user_message),
+                    total_chars,
                     len(raw) if raw else 0,
+                    in_tok,
+                    out_tok,
+                    cache_write,
+                    cache_read,
+                    round(cost_usd, 6),
                     called_at,
                     duration_ms,
                     error_msg,
@@ -713,11 +830,54 @@ def run_scan(scan_name: str, user_id: int, limit: int = None,
     skip_content:         skip Phase 4c (content improvement).
     Resumes automatically if interrupted — already-scraped URLs are skipped.
     """
-    conn   = get_connection()
-    cursor = conn.cursor()
+    conn    = get_connection()
+    cursor  = conn.cursor()
+    scan_id = None  # tracked early so fatal-error handler can mark it Failed
+
+    # ── Pre-lookup: grab scan record already created by the web UI ───────
+    # Next.js inserts the record (Status='Running') before spawning Python,
+    # so we capture the scan_id here to allow error recovery if we crash
+    # before Phase 1 would normally create/find it.
+    try:
+        cursor.execute(
+            f"SELECT TOP 1 ScanID FROM {TP}Scans "
+            f"WHERE ScanName = ? AND Status = 'Running' ORDER BY ScanID DESC",
+            (scan_name,),
+        )
+        _pre = cursor.fetchone()
+        if _pre:
+            scan_id = _pre[0]
+    except Exception:
+        pass  # scan_id stays None; will be set/created in Phase 1
+
+    def _fatal(exc: Exception) -> None:
+        """Print the traceback and mark the scan record as Failed."""
+        err_text = traceback.format_exc()
+        print(f"\n{'='*60}")
+        print(f"SCAN FAILED: {exc}")
+        print(err_text)
+        print(f"{'='*60}\n")
+        if scan_id is not None:
+            try:
+                cursor.execute(
+                    f"UPDATE {TP}Scans "
+                    f"SET Status='Failed', EndedAt=GETUTCDATE(), "
+                    f"    ErrorLog = ISNULL(ErrorLog,'') + ? "
+                    f"WHERE ScanID = ?",
+                    (f"\nFATAL: {str(exc)[:2000]}\n{err_text[:3000]}", scan_id),
+                )
+                conn.commit()
+                print(f"  Marked ScanID={scan_id} as Failed.")
+            except Exception as upd_exc:
+                print(f"  WARNING: Could not update scan status: {upd_exc}")
 
     # ── Resolve Claude API key from DB (falls back to env var) ───────────
-    _init_claude_client(conn)
+    try:
+        _init_claude_client(conn)
+    except Exception as exc:
+        _fatal(exc)
+        conn.close()
+        raise
 
     # ── Phase 1: Initialisation ───────────────────────────────────────────
     now    = datetime.utcnow()
@@ -729,23 +889,28 @@ def run_scan(scan_name: str, user_id: int, limit: int = None,
     print(f"{'='*60}")
 
     # Load active prompts — validate only the phases we will actually run
-    prompts = _load_active_prompts(conn)
+    try:
+        prompts = _load_active_prompts(conn)
 
-    if not skip_keyword and "KeywordExtraction" not in prompts:
-        raise RuntimeError(
-            "No active KeywordExtraction prompt found in ClCode_Prompts. "
-            "Run 'python run_scan.py setup' to seed the v1 keyword prompt."
-        )
-    if not skip_cannibalization and "Cannibalization" not in prompts:
-        raise RuntimeError(
-            "No active Cannibalization prompt found in ClCode_Prompts. "
-            "Run 'python run_scan.py setup' to seed the latest prompts."
-        )
-    if not skip_content and "ContentImprovement" not in prompts:
-        raise RuntimeError(
-            "No active ContentImprovement prompt found in ClCode_Prompts. "
-            "Run 'python run_scan.py setup' to seed the latest prompts."
-        )
+        if not skip_keyword and "KeywordExtraction" not in prompts:
+            raise RuntimeError(
+                "No active KeywordExtraction prompt found in ClCode_Prompts. "
+                "Run 'python run_scan.py setup' to seed the v1 keyword prompt."
+            )
+        if not skip_cannibalization and "Cannibalization" not in prompts:
+            raise RuntimeError(
+                "No active Cannibalization prompt found in ClCode_Prompts. "
+                "Run 'python run_scan.py setup' to seed the latest prompts."
+            )
+        if not skip_content and "ContentImprovement" not in prompts:
+            raise RuntimeError(
+                "No active ContentImprovement prompt found in ClCode_Prompts. "
+                "Run 'python run_scan.py setup' to seed the latest prompts."
+            )
+    except Exception as exc:
+        _fatal(exc)
+        conn.close()
+        raise
 
     keyword_prompt  = prompts.get("KeywordExtraction")
     cannibal_prompt = prompts.get("Cannibalization")
@@ -759,6 +924,7 @@ def run_scan(scan_name: str, user_id: int, limit: int = None,
     try:
         all_urls = _get_source_urls(conn, limit=limit, url_filters=url_filters)
     except Exception as exc:
+        _fatal(exc)
         conn.close()
         raise RuntimeError(f"Cannot read {URL_SOURCE_TABLE}: {exc}") from exc
 
@@ -898,6 +1064,8 @@ def run_scan(scan_name: str, user_id: int, limit: int = None,
                     )
                 else:
                     print("    WARNING: Empty keyword data returned")
+            except PromptTooLargeError:
+                pass  # already printed + logged to ClaudeCallLog; skip page
             except Exception as exc:
                 err = f"Keyword extraction failed for {page['PageURL']}: {exc}"
                 print(f"    WARNING: {err}")
@@ -936,6 +1104,8 @@ def run_scan(scan_name: str, user_id: int, limit: int = None,
                                           tree_name, issues)
                     cannibal_total += len(issues)
                     print(f"    Cannibalization: {len(issues)} issue(s) found")
+                except PromptTooLargeError:
+                    pass  # already printed + logged; skip this tree
                 except Exception as exc:
                     err = f"Cannibal analysis failed for tree '{tree_name}': {exc}"
                     print(f"    WARNING: {err}")
@@ -988,6 +1158,8 @@ def run_scan(scan_name: str, user_id: int, limit: int = None,
                         f"  [{page_num}/{total_pages}] {url_short}: "
                         f"{len(improvements)} suggestion(s)"
                     )
+                except PromptTooLargeError:
+                    pass  # already printed + logged; skip this page
                 except Exception as exc:
                     err = f"Content analysis failed for {page['PageURL']}: {exc}"
                     print(f"    WARNING: {err}")

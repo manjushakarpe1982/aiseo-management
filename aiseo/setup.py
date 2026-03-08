@@ -489,6 +489,24 @@ def create_tables(conn) -> None:
         """)
         created.append(t)
 
+    # ── Migration: add token + cost + cache columns to ClCode_ClaudeCallLog ──
+    # These columns were added after initial release; safe to run repeatedly.
+    for col, definition in [
+        ("InputTokens",      "INT NULL"),
+        ("OutputTokens",     "INT NULL"),
+        ("CostUSD",          "DECIMAL(10,6) NULL"),
+        ("CacheWriteTokens", "INT NULL"),   # tokens written to prompt cache (first call)
+        ("CacheReadTokens",  "INT NULL"),   # tokens read from prompt cache (subsequent calls)
+    ]:
+        cursor.execute(
+            "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS "
+            "WHERE TABLE_NAME = ? AND COLUMN_NAME = ?",
+            (f"{TP}ClaudeCallLog", col),
+        )
+        if cursor.fetchone()[0] == 0:
+            cursor.execute(f"ALTER TABLE {TP}ClaudeCallLog ADD {col} {definition}")
+            print(f"  Migration: added column {TP}ClaudeCallLog.{col}")
+
     # 10. ClCode_Settings  (master variables — e.g. ANTHROPIC_API_KEY)
     t = f"{TP}Settings"
     if not _table_exists(cursor, t):
