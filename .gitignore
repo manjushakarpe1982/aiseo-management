@@ -1,4 +1,20 @@
-.next/
-node_modules/
-.env.local
-*.log
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+
+# Reports (generated files)
+AISEO_Report_*.xlsx
+AISEO_Claude_Data_Reference.docx
+
+# macOS
+.DS_Store
+
+# Claude internal
+.claude/
+
+# Node / Next.js
+aiseo-app/node_modules/
+aiseo-app/.next/
+aiseo-app/.env.local
