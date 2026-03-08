@@ -167,11 +167,246 @@ function IssueStatusRow({
   );
 }
 
+// ─── Keywords Tab — helpers ───────────────────────────────────────────────────
+
+interface KwSuggestion {
+  priority: 'high' | 'medium' | 'low';
+  title: string;
+  reasoning: string;
+  items?: string[];
+}
+
+function buildKwSuggestions(kw: PageKeyword): KwSuggestion[] {
+  const out: KwSuggestion[] = [];
+  const score = kw.ContentFocusScore ?? 0;
+
+  // 1. Score-based focus recommendation
+  if (score > 0 && score <= 4) {
+    out.push({
+      priority: 'high',
+      title: 'Rewrite content to focus on the primary keyword',
+      reasoning: `Content focus score is ${score}/10 — very low. Google may not confidently associate this page with "${kw.PrimaryKeyword}". Rewrite key sections so the primary topic is unmistakable: use it in the H1, opening paragraph, and at least one subheading.`,
+    });
+  } else if (score >= 5 && score <= 6) {
+    out.push({
+      priority: 'medium',
+      title: 'Strengthen content focus',
+      reasoning: `Score ${score}/10 is moderate. Add more on-topic copy about "${kw.PrimaryKeyword}" — particularly in the opening paragraph and at least one H2 subheading — to strengthen the relevance signal.`,
+    });
+  }
+
+  // 2. Keyword gaps — high value
+  if (kw.KeywordGaps.length > 0) {
+    out.push({
+      priority: 'high',
+      title: 'Target these missing keyword opportunities',
+      reasoning: `Your page doesn't currently rank for these closely related search terms. Users are actively looking for them — adding them in body copy, an FAQ section, or a dedicated paragraph can capture additional organic traffic without creating a new page.`,
+      items: kw.KeywordGaps,
+    });
+  }
+
+  // 3. Missing LSI terms
+  if (kw.MissingLSITerms.length > 0) {
+    out.push({
+      priority: 'medium',
+      title: 'Weave in LSI terms to build topical authority',
+      reasoning: `Search engines use semantically related terms to judge how comprehensively a page covers a topic. Including these naturally in body copy, subheadings, or an FAQ signals expertise and can strengthen rankings for the primary keyword.`,
+      items: kw.MissingLSITerms,
+    });
+  }
+
+  // 4. Intent-specific recommendation
+  const intent = kw.SearchIntent?.toLowerCase() ?? '';
+  if (intent.includes('transactional')) {
+    out.push({
+      priority: 'low',
+      title: 'Optimise page elements for buying intent',
+      reasoning: `Visitors on this page intend to purchase. Ensure you have: a visible price, a prominent "Add to Cart" or "Buy Now" CTA above the fold, product specifications, and trust signals (customer reviews, certifications, secure-payment badges).`,
+    });
+  } else if (intent.includes('informational')) {
+    out.push({
+      priority: 'low',
+      title: 'Structure content for information-seeking visitors',
+      reasoning: `Users want to learn before they buy. Use clear H2/H3 headings, add a FAQ section, include comparison tables or bullet-point specs where relevant, and link to the nearest relevant buying page.`,
+    });
+  } else if (intent.includes('commercial')) {
+    out.push({
+      priority: 'low',
+      title: 'Include comparison and decision-support elements',
+      reasoning: `Commercial intent visitors are weighing options. Add comparison tables, pros/cons lists, and specific product differentiators — then make it easy to proceed to purchase from the same page.`,
+    });
+  }
+
+  // 5. Always: primary keyword placement checklist
+  out.push({
+    priority: 'low',
+    title: `Verify "${kw.PrimaryKeyword}" appears in all critical locations`,
+    reasoning: `The primary keyword must appear in: the page <title> tag, the <h1>, the meta description (within 160 characters), and naturally in the first 100 words of body content. Missing any of these is a quick win.`,
+  });
+
+  return out;
+}
+
+// ── Suggestion card ───────────────────────────────────────────────────────────
+
+function KwSuggestionCard({ s }: { s: KwSuggestion }) {
+  const cfg = {
+    high:   { bar: 'bg-red-400',   badge: 'bg-red-100 text-red-700 border-red-200',   label: 'High Priority',    tag: 'bg-red-50 text-red-800 border-red-200' },
+    medium: { bar: 'bg-amber-400', badge: 'bg-amber-100 text-amber-700 border-amber-200', label: 'Medium Priority', tag: 'bg-amber-50 text-amber-800 border-amber-200' },
+    low:    { bar: 'bg-blue-300',  badge: 'bg-blue-50 text-blue-600 border-blue-200',  label: 'Good Practice',    tag: 'bg-slate-100 text-slate-700 border-slate-200' },
+  }[s.priority];
+
+  return (
+    <div className="flex gap-3">
+      <div className={`w-1 rounded-full flex-shrink-0 self-stretch ${cfg.bar}`} />
+      <div className="flex-1 min-w-0 py-0.5">
+        <div className="flex items-center gap-2 mb-1">
+          <span className={`inline-flex items-center text-xs font-semibold px-2 py-0.5 rounded-full border ${cfg.badge}`}>
+            {cfg.label}
+          </span>
+        </div>
+        <p className="font-semibold text-ink text-sm">{s.title}</p>
+        <p className="text-muted text-sm mt-0.5 leading-relaxed">{s.reasoning}</p>
+        {s.items && s.items.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-2">
+            {s.items.map((item, i) => (
+              <span key={i} className={`border text-xs px-2 py-0.5 rounded-md font-medium ${cfg.tag}`}>
+                {item}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Keyword chip list ─────────────────────────────────────────────────────────
+
+function KwChips({ label, items, cls }: { label: string; items: string[]; cls: string }) {
+  if (!items || items.length === 0) return null;
+  return (
+    <div>
+      <p className="text-xs font-semibold text-muted uppercase tracking-wide mb-1.5">{label}</p>
+      <div className="flex flex-wrap gap-1">
+        {items.map((t, i) => (
+          <span key={i} className={`border text-xs px-2 py-0.5 rounded-md ${cls}`}>{t}</span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Single keyword card ───────────────────────────────────────────────────────
+
+function KeywordCard({ kw, open, onToggle }: { kw: PageKeyword; open: boolean; onToggle: () => void }) {
+  const suggestions = buildKwSuggestions(kw);
+  const topSuggestion = suggestions[0];
+  const highCount = suggestions.filter((s) => s.priority === 'high').length;
+  const shortUrl = kw.PageURL.replace(/^https?:\/\/(www\.)?[^/]+/, '…');
+
+  return (
+    <div className="bg-surface rounded-xl border border-border shadow-card overflow-hidden">
+
+      {/* ── Collapsed header ── */}
+      <button onClick={onToggle} className="w-full text-left hover:bg-surface2 transition-colors">
+        <div className="flex items-center gap-4 px-5 py-3.5">
+          <ScoreBadge score={kw.ContentFocusScore} />
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold text-ink text-sm">{kw.PrimaryKeyword}</p>
+            <a
+              href={kw.PageURL}
+              target="_blank"
+              rel="noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="text-primary hover:underline text-sm font-mono"
+            >
+              {shortUrl}
+            </a>
+          </div>
+          {kw.SearchIntent && (
+            <Badge variant="green">{kw.SearchIntent.toUpperCase()}</Badge>
+          )}
+          {highCount > 0 && (
+            <span className="flex items-center gap-1 text-xs font-semibold text-red-700 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full whitespace-nowrap">
+              {highCount} urgent action{highCount !== 1 ? 's' : ''}
+            </span>
+          )}
+          <svg
+            className={`w-4 h-4 text-muted transition-transform flex-shrink-0 ${open ? 'rotate-180' : ''}`}
+            fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </div>
+
+        {/* Top suggestion preview strip (collapsed only) */}
+        {!open && topSuggestion && (
+          <div className="mx-5 mb-3.5 flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            <svg className="w-3.5 h-3.5 text-amber-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+            </svg>
+            <p className="text-sm text-amber-800 leading-snug">
+              <span className="font-semibold">Top action: </span>
+              {topSuggestion.title}
+              {topSuggestion.items && topSuggestion.items.length > 0 && (
+                <span className="text-amber-700">
+                  {' '}— {topSuggestion.items.slice(0, 3).join(', ')}
+                  {topSuggestion.items.length > 3 ? ` +${topSuggestion.items.length - 3} more` : ''}
+                </span>
+              )}
+            </p>
+          </div>
+        )}
+      </button>
+
+      {/* ── Expanded detail ── */}
+      {open && (
+        <div className="border-t border-border px-5 py-5">
+          <div className="grid grid-cols-3 gap-6">
+
+            {/* Left 2/3: Action Plan */}
+            <div className="col-span-2 space-y-4">
+              <p className="text-xs font-semibold text-muted uppercase tracking-wider">
+                Action Plan — {suggestions.length} recommendation{suggestions.length !== 1 ? 's' : ''}
+              </p>
+              {suggestions.map((s, i) => (
+                <KwSuggestionCard key={i} s={s} />
+              ))}
+            </div>
+
+            {/* Right 1/3: All keyword lists */}
+            <div className="space-y-4 pl-4 border-l border-border">
+              <p className="text-xs font-semibold text-muted uppercase tracking-wider">All Keywords</p>
+              <KwChips
+                label="Secondary Keywords"
+                items={kw.SecondaryKeywords}
+                cls="bg-slate-100 text-slate-700 border-slate-200"
+              />
+              <KwChips
+                label="Keyword Gaps"
+                items={kw.KeywordGaps}
+                cls="bg-amber-50 text-amber-800 border-amber-200"
+              />
+              <KwChips
+                label="Missing LSI Terms"
+                items={kw.MissingLSITerms}
+                cls="bg-blue-50 text-blue-700 border-blue-200"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Keywords Tab ─────────────────────────────────────────────────────────────
 
 function KeywordsTab({ scanId }: { scanId: number }) {
   const [rows, setRows] = useState<PageKeyword[]>([]);
   const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     fetch(`/api/scans/${scanId}/keywords`)
@@ -179,64 +414,39 @@ function KeywordsTab({ scanId }: { scanId: number }) {
       .then((d) => { setRows(d); setLoading(false); });
   }, [scanId]);
 
+  const toggle = (id: number) => setExpanded((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const expandAll   = () => setExpanded(new Set(rows.map((r) => r.KeywordID)));
+  const collapseAll = () => setExpanded(new Set());
+
   if (loading) return <Spinner />;
   if (rows.length === 0) return <Empty msg="No keyword data for this scan." />;
 
-  return (
-    <div className="overflow-x-auto rounded-xl border border-border">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="bg-surface2 border-b border-border">
-            <th className="text-left px-4 py-3 text-muted font-medium">Tree</th>
-            <th className="text-left px-4 py-3 text-muted font-medium">URL</th>
-            <th className="text-left px-4 py-3 text-muted font-medium">Primary Keyword</th>
-            <th className="text-left px-4 py-3 text-muted font-medium">Intent</th>
-            <th className="text-center px-4 py-3 text-muted font-medium">Score</th>
-            <th className="text-left px-4 py-3 text-muted font-medium">Secondary</th>
-            <th className="text-left px-4 py-3 text-muted font-medium">Gaps</th>
-            <th className="text-left px-4 py-3 text-muted font-medium">Missing LSI</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((kw) => (
-            <tr key={kw.KeywordID} className="border-b border-border/50 hover:bg-surface2 transition-colors">
-              <td className="px-4 py-3">
-                {kw.TreeCluster && <Badge variant="purple">{kw.TreeCluster}</Badge>}
-              </td>
-              <td className="px-4 py-3 max-w-[220px]">
-                <a href={kw.PageURL} target="_blank" rel="noreferrer"
-                  className="text-primary hover:underline text-sm break-all font-mono">
-                  {kw.PageURL.replace('https://www.boldpreciousmetals.com', '…')}
-                </a>
-              </td>
-              <td className="px-4 py-3 font-medium text-ink">{kw.PrimaryKeyword}</td>
-              <td className="px-4 py-3">
-                {kw.SearchIntent && <Badge variant="green">{kw.SearchIntent}</Badge>}
-              </td>
-              <td className="px-4 py-3 text-center">
-                <ScoreBadge score={kw.ContentFocusScore} />
-              </td>
-              <td className="px-4 py-3"><TagList items={kw.SecondaryKeywords} max={3} /></td>
-              <td className="px-4 py-3"><TagList items={kw.KeywordGaps} max={3} /></td>
-              <td className="px-4 py-3"><TagList items={kw.MissingLSITerms} max={3} /></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
+  const grouped = groupBy(rows, (r) => r.TreeCluster ?? 'Uncategorised');
 
-function TagList({ items, max }: { items: string[]; max: number }) {
-  if (!items || items.length === 0) return <span className="text-muted text-sm">—</span>;
-  const shown = items.slice(0, max);
-  const rest = items.length - max;
   return (
-    <div className="flex flex-wrap gap-1">
-      {shown.map((t, i) => (
-        <span key={i} className="bg-slate-100 text-slate-700 border border-slate-200 text-sm px-1.5 py-0.5 rounded-md">{t}</span>
+    <div className="space-y-6">
+      <ExpandToolbar
+        total={rows.length}
+        expandedCount={expanded.size}
+        onExpandAll={expandAll}
+        onCollapseAll={collapseAll}
+      />
+      {Object.entries(grouped).map(([tree, items]) => (
+        <div key={tree} className="space-y-3">
+          <div className="flex items-center gap-3">
+            <Badge variant="purple">{tree}</Badge>
+            <span className="text-muted text-sm">{items.length} page{items.length !== 1 ? 's' : ''}</span>
+          </div>
+          {items.map((kw) => (
+            <KeywordCard
+              key={kw.KeywordID}
+              kw={kw}
+              open={expanded.has(kw.KeywordID)}
+              onToggle={() => toggle(kw.KeywordID)}
+            />
+          ))}
+        </div>
       ))}
-      {rest > 0 && <span className="text-muted text-sm">+{rest}</span>}
     </div>
   );
 }
@@ -748,10 +958,11 @@ function CallsTab({ scanId }: { scanId: number }) {
           <tr className="bg-surface2 border-b border-border">
             <th className="text-left px-4 py-3 text-muted font-medium">Type</th>
             <th className="text-left px-4 py-3 text-muted font-medium">Entity / URL</th>
-            <th className="text-center px-4 py-3 text-muted font-medium">Success</th>
+            <th className="text-center px-4 py-3 text-muted font-medium">OK</th>
             <th className="text-right px-4 py-3 text-muted font-medium">Duration</th>
-            <th className="text-right px-4 py-3 text-muted font-medium">In chars</th>
-            <th className="text-right px-4 py-3 text-muted font-medium">Out chars</th>
+            <th className="text-right px-4 py-3 text-muted font-medium">In tokens</th>
+            <th className="text-right px-4 py-3 text-muted font-medium">Out tokens</th>
+            <th className="text-right px-4 py-3 text-muted font-medium">Cost</th>
             <th className="text-left px-4 py-3 text-muted font-medium">Called At</th>
             <th className="px-4 py-3" />
           </tr>
@@ -775,9 +986,16 @@ function CallsTab({ scanId }: { scanId: number }) {
                       ? <span className="text-success font-bold">✓</span>
                       : <span className="text-danger font-bold">✗</span>}
                   </td>
-                  <td className="px-4 py-3 text-right font-mono text-sm">{call.DurationMs ? `${call.DurationMs}ms` : '—'}</td>
-                  <td className="px-4 py-3 text-right font-mono text-sm">{call.InputCharsEstimate?.toLocaleString() ?? '—'}</td>
-                  <td className="px-4 py-3 text-right font-mono text-sm">{call.OutputCharsEstimate?.toLocaleString() ?? '—'}</td>
+                  <td className="px-4 py-3 text-right font-mono text-sm">{call.DurationMs ? `${(call.DurationMs/1000).toFixed(1)}s` : '—'}</td>
+                  <td className="px-4 py-3 text-right font-mono text-sm">
+                    {call.InputTokens != null ? call.InputTokens.toLocaleString() : (call.InputCharsEstimate != null ? `~${Math.round(call.InputCharsEstimate/4).toLocaleString()}` : '—')}
+                  </td>
+                  <td className="px-4 py-3 text-right font-mono text-sm">
+                    {call.OutputTokens != null ? call.OutputTokens.toLocaleString() : (call.OutputCharsEstimate != null ? `~${Math.round(call.OutputCharsEstimate/4).toLocaleString()}` : '—')}
+                  </td>
+                  <td className="px-4 py-3 text-right font-mono text-sm font-semibold text-primary">
+                    {call.CostUSD != null ? `$${call.CostUSD.toFixed(4)}` : '—'}
+                  </td>
                   <td className="px-4 py-3 text-sm text-muted">{fmtDate(call.CalledAt)}</td>
                   <td className="px-4 py-3 text-right">
                     <svg className={`w-4 h-4 text-muted inline transition-transform ${open ? 'rotate-180' : ''}`}
@@ -788,7 +1006,7 @@ function CallsTab({ scanId }: { scanId: number }) {
                 </tr>
                 {open && (
                   <tr key={`${call.CallID}-expand`} className="border-b border-border">
-                    <td colSpan={8} className="px-4 py-4 bg-surface2">
+                    <td colSpan={9} className="px-4 py-4 bg-surface2">
                       {call.ErrorMessage && (
                         <div className="mb-4 p-3 bg-danger-light border border-red-200 rounded-xl text-sm text-danger">
                           <strong>Error:</strong> {call.ErrorMessage}
@@ -949,6 +1167,47 @@ export default function ScanDetailPage() {
         <span className="text-ink font-medium">{scan.ScanName}</span>
       </div>
 
+      {/* Failed banner — fatal error, scan did not complete */}
+      {scan.Status === 'Failed' && (
+        <div className="rounded-2xl border border-red-200 bg-danger-light overflow-hidden">
+          <div className="flex items-center gap-3 px-5 py-4 border-b border-red-200">
+            <svg className="w-5 h-5 text-danger flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+            </svg>
+            <p className="text-sm font-semibold text-danger">
+              This scan failed. See the error details below.
+            </p>
+          </div>
+          {scan.ErrorLog && (
+            <pre className="px-5 py-4 text-xs text-danger/80 font-mono whitespace-pre-wrap overflow-x-auto max-h-60 leading-relaxed">
+              {scan.ErrorLog.trim()}
+            </pre>
+          )}
+        </div>
+      )}
+
+      {/* Warning banner — scan completed but some analyses had errors (e.g. AI API failures) */}
+      {scan.Status !== 'Failed' && scan.ErrorLog && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 overflow-hidden">
+          <div className="flex items-center gap-3 px-5 py-4 border-b border-amber-200">
+            <svg className="w-5 h-5 text-amber-600 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+            </svg>
+            <div>
+              <p className="text-sm font-semibold text-amber-700">
+                Some analyses encountered errors during this scan.
+              </p>
+              <p className="text-sm text-amber-600 mt-0.5">
+                Check your AI provider API key in <a href="/settings" className="underline hover:text-amber-800">Settings</a> if you see API-related errors below.
+              </p>
+            </div>
+          </div>
+          <pre className="px-5 py-4 text-xs text-amber-800 font-mono whitespace-pre-wrap overflow-x-auto max-h-60 leading-relaxed">
+            {scan.ErrorLog.trim()}
+          </pre>
+        </div>
+      )}
+
       {/* Metadata card */}
       <div className="bg-surface rounded-2xl border border-border shadow-card p-6">
         <div className="flex items-center gap-3 flex-wrap">
@@ -972,7 +1231,18 @@ export default function ScanDetailPage() {
             value={scan.CannibalizationPromptLabel ? `v${scan.CannibalizationPromptVersion} · ${scan.CannibalizationPromptLabel}` : '—'} />
           <MetaField label="Content Prompt"
             value={scan.ContentPromptLabel ? `v${scan.ContentPromptVersion} · ${scan.ContentPromptLabel}` : '—'} />
-          {scan.ErrorLog && <div className="col-span-2"><MetaField label="Error Log" value={scan.ErrorLog} /></div>}
+          {/* API cost — only show when we have data */}
+          {(scan.TotalCostUSD != null && scan.TotalCostUSD > 0) && (
+            <div className="col-span-2 md:col-span-2 flex items-center gap-3 px-4 py-3 bg-primary/5 border border-primary/20 rounded-xl">
+              <svg className="w-4 h-4 text-primary flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <div>
+                <p className="text-xs font-semibold text-muted uppercase tracking-wide">Total API Cost</p>
+                <p className="text-sm font-bold text-primary mt-0.5">${scan.TotalCostUSD.toFixed(4)}</p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
