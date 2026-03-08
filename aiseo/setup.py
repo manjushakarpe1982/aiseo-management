@@ -690,6 +690,11 @@ def seed_settings(conn) -> None:
             "",
             "Claude API key — get yours at https://console.anthropic.com",
         ),
+        (
+            "GEMINI_API_KEY",
+            "",
+            "Google Gemini API key — get yours at https://aistudio.google.com",
+        ),
     ]
 
     seeded = []

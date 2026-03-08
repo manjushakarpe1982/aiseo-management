@@ -66,6 +66,7 @@ def cmd_scan(args) -> None:
         skip_keyword=args.skip_keyword,
         skip_cannibalization=args.skip_cannibalization,
         skip_content=args.skip_content,
+        provider=args.provider,
     )
     print(f"Scan finished. ScanID = {scan_id}")
     if args.report:
@@ -170,6 +171,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Skip Phase 4c: Content Improvement")
     p_scan.add_argument("--report", action="store_true",
                         help="Auto-generate Excel report after scan completes")
+    p_scan.add_argument("--provider", default="claude", choices=["claude", "gemini"],
+                        help="AI provider to use for analysis (default: claude)")
 
     # report
     p_rep = sub.add_parser("report", help="Export Excel report for a scan")

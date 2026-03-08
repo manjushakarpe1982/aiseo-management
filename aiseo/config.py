@@ -13,6 +13,26 @@ DB_PWD    = os.environ.get("AISEO_DB_PWD",    "ash@2011")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 CLAUDE_MODEL      = "claude-sonnet-4-20250514"
 
+# ── Gemini API ──────────────────────────────────────────────────────────────
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+GEMINI_MODEL   = "gemini-2.0-flash"
+
+# Pricing per million tokens (USD) for Gemini models.
+GEMINI_PRICING: dict = {
+    "gemini-2.0-flash":      (0.10, 0.40),
+    "gemini-1.5-pro":        (1.25, 5.00),
+    "gemini-1.5-flash":      (0.075, 0.30),
+}
+GEMINI_PRICING_DEFAULT = (0.10, 0.40)
+
+
+def get_gemini_pricing(model: str) -> tuple:
+    """Return (input_$/M, output_$/M) for the given Gemini model string."""
+    for prefix, prices in GEMINI_PRICING.items():
+        if model.startswith(prefix):
+            return prices
+    return GEMINI_PRICING_DEFAULT
+
 # Pricing per million tokens (USD).
 # Update when Anthropic changes rates: https://www.anthropic.com/pricing
 # Format: model_prefix -> (input_$/M, output_$/M)

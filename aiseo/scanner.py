@@ -21,11 +21,15 @@ from datetime import datetime
 from urllib.parse import urlparse
 
 import anthropic
+from google import genai as google_genai
+from google.genai import types as genai_types
 from playwright.sync_api import sync_playwright
 
 from .config import (
     ANTHROPIC_API_KEY,
     CLAUDE_MODEL,
+    GEMINI_API_KEY,
+    GEMINI_MODEL,
     MAX_INPUT_CHARS,
     MAX_INPUT_TOKENS,
     TP,
@@ -33,6 +37,7 @@ from .config import (
     URL_SOURCE_TABLE,
     get_model_pricing,
     get_model_cache_pricing,
+    get_gemini_pricing,
 )
 from .db import get_connection
 
@@ -52,9 +57,10 @@ class PromptTooLargeError(Exception):
         )
 
 
-# ── Claude client (lazy — initialised at the start of each run_scan call) ─
+# ── API clients (lazy — initialised at the start of each run_scan call) ───
 
 _claude: anthropic.Anthropic | None = None
+_gemini: google_genai.Client | None = None
 
 
 def _get_setting(conn, key: str, fallback: str = "") -> str:
@@ -136,8 +142,59 @@ def _call_claude(system_prompt: str, user_message: str) -> tuple:
     raise RuntimeError("Claude API failed after 3 attempts")
 
 
+def _init_gemini_client(conn) -> None:
+    """
+    Resolve the Google Gemini API key (DB setting → env-var fallback) and
+    create the module-level _gemini client.
+    Raises RuntimeError if no key is available.
+    """
+    global _gemini
+    api_key = _get_setting(conn, "GEMINI_API_KEY", fallback=GEMINI_API_KEY)
+    if not api_key:
+        raise RuntimeError(
+            "GEMINI_API_KEY is not configured.\n"
+            "Set it via the web UI (Settings page) or with:\n"
+            "  export GEMINI_API_KEY='AIzaSy...'"
+        )
+    _gemini = google_genai.Client(api_key=api_key)
+    masked = f"...{api_key[-6:]}" if len(api_key) > 6 else "***"
+    print(f"  Gemini client initialised  (key: {masked})")
+
+
+def _call_gemini(system_prompt: str, user_message: str) -> tuple:
+    """
+    Raw Gemini API call with rate-limit retry. 3 s sleep after each call.
+
+    Returns (text, input_tokens, output_tokens, cache_write_tokens, cache_read_tokens).
+    cache_write_tokens and cache_read_tokens are always 0 (Gemini has no prompt caching).
+    """
+    for attempt in range(3):
+        try:
+            response = _gemini.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=user_message,
+                config=genai_types.GenerateContentConfig(
+                    system_instruction=system_prompt,
+                ),
+            )
+            time.sleep(3)
+            usage   = response.usage_metadata
+            in_tok  = getattr(usage, "prompt_token_count",     0) or 0
+            out_tok = getattr(usage, "candidates_token_count", 0) or 0
+            return response.text, in_tok, out_tok, 0, 0
+        except Exception as exc:
+            if ("quota" in str(exc).lower() or "rate" in str(exc).lower()) and attempt < 2:
+                wait = 30 * (attempt + 1)
+                print(f"    Rate limit hit — waiting {wait}s before retry...")
+                time.sleep(wait)
+            else:
+                raise
+    raise RuntimeError("Gemini API failed after 3 attempts")
+
+
 def _call_claude_logged(conn, scan_id: int, call_type: str, entity_url: str,
-                        system_prompt: str, user_message: str) -> str:
+                        system_prompt: str, user_message: str,
+                        provider: str = "claude") -> str:
     """
     Wrap _call_claude and persist the full input/output to ClCode_ClaudeCallLog.
 
@@ -198,36 +255,49 @@ def _call_claude_logged(conn, scan_id: int, call_type: str, entity_url: str,
     error_msg   = None
 
     try:
-        raw, in_tok, out_tok, cache_write, cache_read = _call_claude(system_prompt, user_message)
+        if provider == "gemini":
+            raw, in_tok, out_tok, cache_write, cache_read = _call_gemini(system_prompt, user_message)
+        else:
+            raw, in_tok, out_tok, cache_write, cache_read = _call_claude(system_prompt, user_message)
         succeeded = True
-        in_price, out_price       = get_model_pricing(CLAUDE_MODEL)
-        cw_price, cr_price        = get_model_cache_pricing(CLAUDE_MODEL)
-        cost = (
-            in_tok      * in_price
-            + out_tok   * out_price
-            + cache_write * cw_price
-            + cache_read  * cr_price
-        ) / 1_000_000
+
+        if provider == "gemini":
+            in_price, out_price = get_gemini_pricing(GEMINI_MODEL)
+            cost = (in_tok * in_price + out_tok * out_price) / 1_000_000
+        else:
+            in_price, out_price = get_model_pricing(CLAUDE_MODEL)
+            cw_price, cr_price  = get_model_cache_pricing(CLAUDE_MODEL)
+            cost = (
+                in_tok      * in_price
+                + out_tok   * out_price
+                + cache_write * cw_price
+                + cache_read  * cr_price
+            ) / 1_000_000
         cache_label = (
             f"  cache_write={cache_write:,}" if cache_write else
             f"  cache_read={cache_read:,}"   if cache_read  else
             ""
         )
-        print(f"    tokens in={in_tok:,}  out={out_tok:,}{cache_label}  cost=${cost:.5f}")
+        print(f"    [{provider}] tokens in={in_tok:,}  out={out_tok:,}{cache_label}  cost=${cost:.5f}")
         return raw
     except Exception as exc:
         error_msg = str(exc)[:2000]
         raise
     finally:
         duration_ms = int((time.time() - t0) * 1000)
-        in_price, out_price   = get_model_pricing(CLAUDE_MODEL)
-        cw_price, cr_price    = get_model_cache_pricing(CLAUDE_MODEL)
-        cost_usd = (
-            in_tok      * in_price
-            + out_tok   * out_price
-            + cache_write * cw_price
-            + cache_read  * cr_price
-        ) / 1_000_000
+        if provider == "gemini":
+            in_price, out_price = get_gemini_pricing(GEMINI_MODEL)
+            cost_usd = (in_tok * in_price + out_tok * out_price) / 1_000_000
+            cw_price = cr_price = 0.0
+        else:
+            in_price, out_price = get_model_pricing(CLAUDE_MODEL)
+            cw_price, cr_price  = get_model_cache_pricing(CLAUDE_MODEL)
+            cost_usd = (
+                in_tok      * in_price
+                + out_tok   * out_price
+                + cache_write * cw_price
+                + cache_read  * cr_price
+            ) / 1_000_000
         try:
             cursor = conn.cursor()
             cursor.execute(
@@ -820,7 +890,8 @@ def run_scan(scan_name: str, user_id: int, limit: int = None,
              url_filters: list = None,
              skip_keyword: bool = False,
              skip_cannibalization: bool = False,
-             skip_content: bool = False) -> int:
+             skip_content: bool = False,
+             provider: str = "claude") -> int:
     """
     Run a full SEO scan. Returns the ScanID.
 
@@ -828,6 +899,7 @@ def run_scan(scan_name: str, user_id: int, limit: int = None,
     skip_keyword:         skip Phase 4a (keyword extraction).
     skip_cannibalization: skip Phase 4b (cannibalization analysis).
     skip_content:         skip Phase 4c (content improvement).
+    provider:             "claude" (default) or "gemini".
     Resumes automatically if interrupted — already-scraped URLs are skipped.
     """
     conn    = get_connection()
@@ -871,9 +943,12 @@ def run_scan(scan_name: str, user_id: int, limit: int = None,
             except Exception as upd_exc:
                 print(f"  WARNING: Could not update scan status: {upd_exc}")
 
-    # ── Resolve Claude API key from DB (falls back to env var) ───────────
+    # ── Resolve API key from DB (falls back to env var) ──────────────────
     try:
-        _init_claude_client(conn)
+        if provider == "gemini":
+            _init_gemini_client(conn)
+        else:
+            _init_claude_client(conn)
     except Exception as exc:
         _fatal(exc)
         conn.close()
@@ -1048,6 +1123,7 @@ def run_scan(scan_name: str, user_id: int, limit: int = None,
                 raw     = _call_claude_logged(
                     conn, scan_id, "KeywordExtraction",
                     page["PageURL"], sys_p, user_msg,
+                    provider=provider,
                 )
                 kw_data = _parse_json_object(raw)
                 if kw_data:
@@ -1098,6 +1174,7 @@ def run_scan(scan_name: str, user_id: int, limit: int = None,
                     raw    = _call_claude_logged(
                         conn, scan_id, "Cannibalization",
                         tree_name, sys_p, user_msg,
+                        provider=provider,
                     )
                     issues = _parse_json_response(raw)
                     _save_cannibal_issues(conn, scan_id, cannibal_prompt.PromptID,
@@ -1147,6 +1224,7 @@ def run_scan(scan_name: str, user_id: int, limit: int = None,
                     raw = _call_claude_logged(
                         conn, scan_id, "ContentImprovement",
                         page["PageURL"], sys_p, user_msg,
+                        provider=provider,
                     )
                     improvements = _parse_json_response(raw)
                     _save_content_improvements(
