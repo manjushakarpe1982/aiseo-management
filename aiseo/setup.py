@@ -489,6 +489,20 @@ def create_tables(conn) -> None:
         """)
         created.append(t)
 
+    # 10. ClCode_Settings  (master variables — e.g. ANTHROPIC_API_KEY)
+    t = f"{TP}Settings"
+    if not _table_exists(cursor, t):
+        cursor.execute(f"""
+            CREATE TABLE {t} (
+                SettingKey      NVARCHAR(100)   NOT NULL PRIMARY KEY,
+                SettingValue    NVARCHAR(1000)  NOT NULL DEFAULT '',
+                Description     NVARCHAR(500)   NULL,
+                UpdatedAt       DATETIME        NOT NULL DEFAULT GETUTCDATE(),
+                UpdatedByUserID INT             NULL
+            )
+        """)
+        created.append(t)
+
     conn.commit()
 
     if created:
@@ -612,6 +626,49 @@ def seed_prompts(conn) -> None:
         print("  All required prompts already exist — skipped.")
 
 
+# ── Step 4: Seed master settings ──────────────────────────────────────────
+
+def seed_settings(conn) -> None:
+    """
+    Seed master settings into ClCode_Settings.
+    Each key is inserted at most once — existing rows are never overwritten
+    so that a user-configured value is never reset.
+    """
+    cursor = conn.cursor()
+
+    settings_to_seed = [
+        (
+            "ANTHROPIC_API_KEY",
+            "",
+            "Claude API key — get yours at https://console.anthropic.com",
+        ),
+    ]
+
+    seeded = []
+    for key, default_val, desc in settings_to_seed:
+        cursor.execute(
+            f"SELECT COUNT(*) FROM {TP}Settings WHERE SettingKey = ?", (key,)
+        )
+        if cursor.fetchone()[0] > 0:
+            print(f"  Setting '{key}' already exists — skipped.")
+            continue
+        cursor.execute(
+            f"""
+            INSERT INTO {TP}Settings (SettingKey, SettingValue, Description, UpdatedAt)
+            VALUES (?, ?, ?, GETUTCDATE())
+            """,
+            (key, default_val, desc),
+        )
+        seeded.append(key)
+
+    conn.commit()
+
+    if seeded:
+        print(f"  Seeded settings: {', '.join(seeded)}")
+    else:
+        print("  All required settings already exist — skipped.")
+
+
 # ── Entry point ───────────────────────────────────────────────────────────
 
 def run_setup() -> None:
@@ -624,6 +681,8 @@ def run_setup() -> None:
         seed_admin(conn)
         print("Step 3 — Prompts")
         seed_prompts(conn)
+        print("Step 4 — Settings")
+        seed_settings(conn)
     finally:
         conn.close()
     print("=== Setup complete ===")

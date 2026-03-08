@@ -30,9 +30,46 @@ from .config import (
 )
 from .db import get_connection
 
-# ── Claude client ─────────────────────────────────────────────────────────
+# ── Claude client (lazy — initialised at the start of each run_scan call) ─
 
-_claude = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+_claude: anthropic.Anthropic | None = None
+
+
+def _get_setting(conn, key: str, fallback: str = "") -> str:
+    """
+    Read a value from ClCode_Settings.
+    Returns *fallback* if the row does not exist or the stored value is empty.
+    """
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"SELECT SettingValue FROM {TP}Settings WHERE SettingKey = ?", (key,)
+        )
+        row = cursor.fetchone()
+        if row and row[0]:
+            return row[0]
+    except Exception:
+        pass  # Table may not exist yet on first run — fall through to fallback
+    return fallback
+
+
+def _init_claude_client(conn) -> None:
+    """
+    Resolve the Anthropic API key (DB setting → env-var fallback) and
+    create the module-level _claude client.
+    Raises RuntimeError if no key is available.
+    """
+    global _claude
+    api_key = _get_setting(conn, "ANTHROPIC_API_KEY", fallback=ANTHROPIC_API_KEY)
+    if not api_key:
+        raise RuntimeError(
+            "ANTHROPIC_API_KEY is not configured.\n"
+            "Set it via the web UI (Settings page) or with:\n"
+            "  export ANTHROPIC_API_KEY='sk-ant-...'"
+        )
+    _claude = anthropic.Anthropic(api_key=api_key)
+    masked = f"...{api_key[-6:]}" if len(api_key) > 6 else "***"
+    print(f"  Claude client initialised  (key: {masked})")
 
 
 def _call_claude(system_prompt: str, user_message: str) -> str:
@@ -678,6 +715,9 @@ def run_scan(scan_name: str, user_id: int, limit: int = None,
     """
     conn   = get_connection()
     cursor = conn.cursor()
+
+    # ── Resolve Claude API key from DB (falls back to env var) ───────────
+    _init_claude_client(conn)
 
     # ── Phase 1: Initialisation ───────────────────────────────────────────
     now    = datetime.utcnow()
