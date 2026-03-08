@@ -38,6 +38,7 @@ from .config import (
     get_model_pricing,
     get_model_cache_pricing,
     get_gemini_pricing,
+    get_gemini_cache_read_pricing,
 )
 from .db import get_connection
 
@@ -61,6 +62,10 @@ class PromptTooLargeError(Exception):
 
 _claude: anthropic.Anthropic | None = None
 _gemini: google_genai.Client | None = None
+
+# Gemini context-cache registry: sha256[:16] of system_prompt → cache resource name.
+# None means "caching attempted but failed" — falls back to uncached call.
+_gemini_caches: dict = {}
 
 
 def _get_setting(conn, key: str, fallback: str = "") -> str:
@@ -161,29 +166,88 @@ def _init_gemini_client(conn) -> None:
     print(f"  Gemini client initialised  (key: {masked})")
 
 
+def _get_gemini_cache_name(system_prompt: str) -> str | None:
+    """
+    Return a Gemini Context Cache resource name for the given system prompt,
+    creating it on first use.  Returns None if caching is unavailable or the
+    prompt is below the minimum token threshold — the caller falls back to an
+    uncached request in that case.
+
+    Cache TTL is set to 1 hour, which comfortably covers a full scan run.
+    """
+    import hashlib
+    key = hashlib.sha256(system_prompt.encode()).hexdigest()[:16]
+
+    if key in _gemini_caches:
+        return _gemini_caches[key]   # may be None (previous attempt failed)
+
+    try:
+        cache = _gemini.caches.create(
+            model=GEMINI_MODEL,
+            config=genai_types.CreateCachedContentConfig(
+                system_instruction=system_prompt,
+                ttl="3600s",
+            ),
+        )
+        _gemini_caches[key] = cache.name
+        print(f"  Gemini context cache created: {cache.name}")
+        return cache.name
+    except Exception as exc:
+        # Common reasons: prompt below minimum token count (1 024 for Flash),
+        # or Context Caching not enabled on the account.
+        print(f"  Gemini context caching unavailable ({exc}) — using uncached calls.")
+        _gemini_caches[key] = None
+        return None
+
+
 def _call_gemini(system_prompt: str, user_message: str) -> tuple:
     """
-    Raw Gemini API call with rate-limit retry. 3 s sleep after each call.
+    Raw Gemini API call using Context Caching for the system prompt.
+
+    On the first call for a given system prompt, the prompt is uploaded to
+    Gemini's cache (1-hour TTL).  Every subsequent call within that window
+    reads from cache at ~75 % lower cost.  If caching is unavailable the call
+    falls back gracefully to a standard uncached request.
 
     Returns (text, input_tokens, output_tokens, cache_write_tokens, cache_read_tokens).
-    cache_write_tokens and cache_read_tokens are always 0 (Gemini has no prompt caching).
     """
+    cache_name = _get_gemini_cache_name(system_prompt)
+
     for attempt in range(3):
         try:
-            response = _gemini.models.generate_content(
-                model=GEMINI_MODEL,
-                contents=user_message,
-                config=genai_types.GenerateContentConfig(
-                    system_instruction=system_prompt,
-                ),
-            )
+            if cache_name:
+                response = _gemini.models.generate_content(
+                    model=GEMINI_MODEL,
+                    contents=user_message,
+                    config=genai_types.GenerateContentConfig(
+                        cached_content=cache_name,
+                    ),
+                )
+            else:
+                response = _gemini.models.generate_content(
+                    model=GEMINI_MODEL,
+                    contents=user_message,
+                    config=genai_types.GenerateContentConfig(
+                        system_instruction=system_prompt,
+                    ),
+                )
             time.sleep(3)
-            usage   = response.usage_metadata
-            in_tok  = getattr(usage, "prompt_token_count",     0) or 0
-            out_tok = getattr(usage, "candidates_token_count", 0) or 0
-            return response.text, in_tok, out_tok, 0, 0
+            usage      = response.usage_metadata
+            in_tok     = getattr(usage, "prompt_token_count",          0) or 0
+            out_tok    = getattr(usage, "candidates_token_count",      0) or 0
+            cache_read = getattr(usage, "cached_content_token_count",  0) or 0
+            return response.text, in_tok, out_tok, 0, cache_read
         except Exception as exc:
-            if ("quota" in str(exc).lower() or "rate" in str(exc).lower()) and attempt < 2:
+            exc_str = str(exc).lower()
+            # If the cached content was deleted / expired, invalidate and retry
+            if cache_name and ("not found" in exc_str or "cache" in exc_str):
+                import hashlib
+                key = hashlib.sha256(system_prompt.encode()).hexdigest()[:16]
+                _gemini_caches[key] = None
+                cache_name = None
+                print(f"    Gemini cache expired/invalid — retrying without cache")
+                continue
+            if ("quota" in exc_str or "rate" in exc_str) and attempt < 2:
                 wait = 30 * (attempt + 1)
                 print(f"    Rate limit hit — waiting {wait}s before retry...")
                 time.sleep(wait)
@@ -263,7 +327,13 @@ def _call_claude_logged(conn, scan_id: int, call_type: str, entity_url: str,
 
         if provider == "gemini":
             in_price, out_price = get_gemini_pricing(GEMINI_MODEL)
-            cost = (in_tok * in_price + out_tok * out_price) / 1_000_000
+            cr_price = get_gemini_cache_read_pricing(GEMINI_MODEL)
+            non_cached = in_tok - cache_read
+            cost = (
+                non_cached * in_price
+                + cache_read * cr_price
+                + out_tok * out_price
+            ) / 1_000_000
         else:
             in_price, out_price = get_model_pricing(CLAUDE_MODEL)
             cw_price, cr_price  = get_model_cache_pricing(CLAUDE_MODEL)
@@ -287,8 +357,14 @@ def _call_claude_logged(conn, scan_id: int, call_type: str, entity_url: str,
         duration_ms = int((time.time() - t0) * 1000)
         if provider == "gemini":
             in_price, out_price = get_gemini_pricing(GEMINI_MODEL)
-            cost_usd = (in_tok * in_price + out_tok * out_price) / 1_000_000
-            cw_price = cr_price = 0.0
+            cr_price = get_gemini_cache_read_pricing(GEMINI_MODEL)
+            non_cached = in_tok - cache_read
+            cost_usd = (
+                non_cached * in_price
+                + cache_read * cr_price
+                + out_tok * out_price
+            ) / 1_000_000
+            cw_price = 0.0
         else:
             in_price, out_price = get_model_pricing(CLAUDE_MODEL)
             cw_price, cr_price  = get_model_cache_pricing(CLAUDE_MODEL)

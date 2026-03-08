@@ -33,6 +33,25 @@ def get_gemini_pricing(model: str) -> tuple:
             return prices
     return GEMINI_PRICING_DEFAULT
 
+
+# Gemini Context Caching — cache read price per million tokens (~75 % cheaper than input).
+# Source: https://ai.google.dev/pricing
+GEMINI_CACHE_READ_PRICING: dict = {
+    "gemini-2.0-flash": 0.025,
+    "gemini-1.5-pro":   0.3125,
+    "gemini-1.5-flash": 0.01875,
+}
+GEMINI_CACHE_READ_PRICING_DEFAULT = 0.025
+
+
+def get_gemini_cache_read_pricing(model: str) -> float:
+    """Return cache-read price per million tokens for the given Gemini model."""
+    for prefix, price in GEMINI_CACHE_READ_PRICING.items():
+        if model.startswith(prefix):
+            return price
+    return GEMINI_CACHE_READ_PRICING_DEFAULT
+
+
 # Pricing per million tokens (USD).
 # Update when Anthropic changes rates: https://www.anthropic.com/pricing
 # Format: model_prefix -> (input_$/M, output_$/M)
