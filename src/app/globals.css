@@ -1,0 +1,30 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Outfit:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+  font-size: 16px;
+}
+
+body {
+  background-color: #F4F6FA;
+  color: #0A0A0A;
+  font-family: 'Outfit', sans-serif;
+}
+
+/* Table & content text */
+table td, table th {
+  font-size: 1rem;
+}
+
+p, li, label, input, select, textarea {
+  font-size: 1rem;
+}
+
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-slide { animation: fadeSlideIn 0.25s ease forwards; }
