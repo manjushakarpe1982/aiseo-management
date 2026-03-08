@@ -843,14 +843,63 @@ const TABS: { id: Tab; label: string; countKey?: string }[] = [
   { id: 'calls',           label: 'Claude Calls',   countKey: 'CallCount' },
 ];
 
+// ─── Countdown ring ───────────────────────────────────────────────────────────
+
+const POLL_INTERVAL = 10; // seconds
+
+function CountdownRing({ seconds, total }: { seconds: number; total: number }) {
+  const r             = 9;
+  const circumference = 2 * Math.PI * r;          // ≈ 56.55
+  const dashoffset    = circumference * (1 - seconds / total);
+
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" aria-label={`Refreshing in ${seconds}s`}>
+      {/* faded background track */}
+      <circle
+        cx="12" cy="12" r={r}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.5"
+        strokeOpacity="0.2"
+      />
+      {/* shrinking progress arc — anchored at top (-90°) */}
+      <circle
+        cx="12" cy="12" r={r}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeDasharray={circumference}
+        strokeDashoffset={dashoffset}
+        transform="rotate(-90 12 12)"
+        style={{ transition: 'stroke-dashoffset 0.9s linear' }}
+      />
+      {/* countdown number */}
+      <text
+        x="12" y="12"
+        textAnchor="middle"
+        dominantBaseline="central"
+        fill="currentColor"
+        style={{ fontSize: '8px', fontWeight: 700, fontFamily: 'inherit' }}
+      >
+        {seconds}
+      </text>
+    </svg>
+  );
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
 export default function ScanDetailPage() {
   const params = useParams();
   const scanId = parseInt(params.id as string);
 
-  const [scan, setScan] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const [scan, setScan]         = useState<any>(null);
+  const [loading, setLoading]   = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>('keywords');
-  const pollingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [countdown, setCountdown] = useState(POLL_INTERVAL);
+  const pollingRef    = useRef<ReturnType<typeof setTimeout>  | null>(null);
+  const countdownRef  = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchScan = () =>
     fetch(`/api/scans/${scanId}`)
@@ -861,9 +910,22 @@ export default function ScanDetailPage() {
 
   useEffect(() => {
     if (scan?.Status === 'Running') {
-      pollingRef.current = setTimeout(() => { fetchScan(); }, 10000);
+      // Reset visual countdown
+      setCountdown(POLL_INTERVAL);
+
+      // Tick every second for the ring animation
+      if (countdownRef.current) clearInterval(countdownRef.current);
+      countdownRef.current = setInterval(() => {
+        setCountdown((prev) => Math.max(0, prev - 1));
+      }, 1000);
+
+      // Actual data refresh after full interval
+      pollingRef.current = setTimeout(() => { fetchScan(); }, POLL_INTERVAL * 1000);
     }
-    return () => { if (pollingRef.current) clearTimeout(pollingRef.current); };
+    return () => {
+      if (pollingRef.current)   clearTimeout(pollingRef.current);
+      if (countdownRef.current) clearInterval(countdownRef.current);
+    };
   }, [scan]);
 
   if (loading) return (
@@ -894,8 +956,8 @@ export default function ScanDetailPage() {
           <ScanStatusBadge status={scan.Status} />
           {scan.Status === 'Running' && (
             <span className="flex items-center gap-1.5 text-sm text-blue-600">
-              <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-              Live — refreshing every 10s
+              <CountdownRing seconds={countdown} total={POLL_INTERVAL} />
+              Refreshing in {countdown}s
             </span>
           )}
           <span className="text-muted text-sm ml-1">#{scan.ScanID}</span>
