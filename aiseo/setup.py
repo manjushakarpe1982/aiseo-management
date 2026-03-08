@@ -6,7 +6,7 @@ Step 2 — Seed default admin user if not present.
 Step 3 — Seed / upgrade prompts:
            KeywordExtraction v1   (new)
            Cannibalization   v2   (keyword-map driven)
-           ContentImprovement v2  (keyword-context driven)
+           ContentImprovement v3  (keyword-context + Marcus Reid expert body rules)
 """
 
 import bcrypt
@@ -154,7 +154,7 @@ Return ONLY the JSON array. No preamble. No markdown fences.
 If no qualifying cannibalization is found, return: []\
 """
 
-# ── ContentImprovement v2 (keyword-context driven) ────────────────────────
+# ── ContentImprovement v3 (keyword-context + Marcus Reid expert body rules) ─
 
 CONTENT_SYSTEM_PROMPT = """\
 You are an expert SEO content strategist specialising in precious metals
@@ -194,7 +194,34 @@ STRICT RULES — you must follow these without exception:
 
 7. suggested_content must be complete and ready to publish. No placeholders.
 
-8. Do not invent competitor data, rankings, or search volumes.\
+8. Do not invent competitor data, rankings, or search volumes.
+
+── BODY CONTENT: EXPERT WRITING RULES ────────────────────────────────────────
+Apply the following rules ONLY when field_name = "BodyContent". Write the
+suggested body content from the perspective of an experienced bullion dealer
+with 20+ years in the physical market.
+
+a. NO WALLS OF TEXT — maximum 3 lines per paragraph.
+
+b. DYNAMIC COMPARISON TABLE — if the content covers 2 or more products or
+   variants, open the suggested_content with an HTML table.
+   - DO NOT hardcode generic headers. Analyse the specific products mentioned
+     and select the 3–4 most relevant metrics (e.g. Purity, Mint Security,
+     Buy-back Spread, Investor Intent).
+   - Format: <th>Metric</th> followed by <th>[Product Name]</th>.
+
+c. E-E-A-T SIGNALS — include all three in every BodyContent suggestion:
+   - "Overlooked Fact": a detail about physical handling or market friction
+     that most buyers ignore.
+   - "Liquidity Score": a brief professional assessment of how easily this
+     item sells back to a dealer.
+   - "Marcus Verdict": a 1-sentence bottom line for a serious stacker.
+
+d. Use bullet points for any "Insider Nuances" or tips section.
+
+e. reasoning for BodyContent must start with:
+   "Marcus Verdict: <1-sentence>. Overlooked Fact: <detail>. Liquidity: <score>."
+──────────────────────────────────────────────────────────────────────────────\
 """
 
 CONTENT_USER_TEMPLATE = """\
@@ -221,6 +248,8 @@ CHECKLIST before generating suggestions:
 - WordCount < 300 → Thin Content
 - Null/empty fields → Missing Field, High priority
 - Copy all current_content values EXACTLY from JSON
+- For BodyContent: apply the Expert Writing Rules from the system prompt
+  (comparison table if applicable, Overlooked Fact, Liquidity Score, Marcus Verdict)
 
 For EACH improvement needed, return a JSON array:
 [
@@ -230,8 +259,8 @@ For EACH improvement needed, return a JSON array:
     "current_char_count": 0,
     "suggested_content": "complete ready-to-publish replacement — no placeholders",
     "suggested_char_count": 0,
-    "issue_type": "Too Short|Too Long|Missing Keyword|Missing Field|Thin Content|Keyword Stuffed|Poor Structure|No LSI|Duplicate|Keyword Gap",
-    "reasoning": "cite exact char count or keyword gap — no invented data",
+    "issue_type": "Too Short|Too Long|Missing Keyword|Missing Field|Thin Content|Keyword Stuffed|Poor Structure|No LSI|Duplicate|Keyword Gap|Expert Content",
+    "reasoning": "cite exact char count or keyword gap — no invented data. For BodyContent start with: Marcus Verdict: ... Overlooked Fact: ... Liquidity: ...",
     "priority": "High|Medium|Low",
     "impact_estimate": "CTR Impact|Rankings|Featured Snippet|E-E-A-T|Crawlability"
   }
@@ -599,12 +628,13 @@ def seed_prompts(conn) -> None:
             "cannibalization detection. More accurate than raw field comparison.",
         ),
         (
-            "ContentImprovement", 2,
-            "v2 - keyword-context driven suggestions",
+            "ContentImprovement", 3,
+            "v3 - keyword-context + Marcus Reid expert body content rules",
             CONTENT_SYSTEM_PROMPT,
             CONTENT_USER_TEMPLATE,
-            "Receives keyword analysis context (primary keyword, gaps, LSI terms) "
-            "from Phase 4a output for more targeted content suggestions.",
+            "Adds expert body content writing rules (Marcus Reid persona): "
+            "dynamic comparison tables, Overlooked Fact, Liquidity Score, "
+            "Marcus Verdict, max 3 lines per paragraph, E-E-A-T signals.",
         ),
     ]
 
