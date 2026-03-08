@@ -1181,6 +1181,12 @@ def run_scan(scan_name: str, user_id: int, limit: int = None,
     for tree_name, pages in trees.items():
         print(f"    {tree_name}: {len(pages)} pages")
 
+    # Track LLM API call outcomes across all phases.
+    # If every single call fails (api_call_failed == api_call_total > 0) the scan
+    # is marked Failed rather than Completed so the error banner shows on the UI.
+    api_call_total  = 0
+    api_call_failed = 0
+
     # ── Phase 4a: Keyword Extraction (per page) ───────────────────────────
     keyword_map: dict[str, dict] = {}   # {page_url: kw_data}
 
@@ -1201,6 +1207,7 @@ def run_scan(scan_name: str, user_id: int, limit: int = None,
                     page["PageURL"], sys_p, user_msg,
                     provider=provider,
                 )
+                api_call_total += 1
                 kw_data = _parse_json_object(raw)
                 if kw_data:
                     keyword_map[page["PageURL"]] = kw_data
@@ -1219,6 +1226,8 @@ def run_scan(scan_name: str, user_id: int, limit: int = None,
             except PromptTooLargeError:
                 pass  # already printed + logged to ClaudeCallLog; skip page
             except Exception as exc:
+                api_call_total  += 1
+                api_call_failed += 1
                 err = f"Keyword extraction failed for {page['PageURL']}: {exc}"
                 print(f"    WARNING: {err}")
                 cursor.execute(
@@ -1252,6 +1261,7 @@ def run_scan(scan_name: str, user_id: int, limit: int = None,
                         tree_name, sys_p, user_msg,
                         provider=provider,
                     )
+                    api_call_total += 1
                     issues = _parse_json_response(raw)
                     _save_cannibal_issues(conn, scan_id, cannibal_prompt.PromptID,
                                           tree_name, issues)
@@ -1260,6 +1270,8 @@ def run_scan(scan_name: str, user_id: int, limit: int = None,
                 except PromptTooLargeError:
                     pass  # already printed + logged; skip this tree
                 except Exception as exc:
+                    api_call_total  += 1
+                    api_call_failed += 1
                     err = f"Cannibal analysis failed for tree '{tree_name}': {exc}"
                     print(f"    WARNING: {err}")
                     cursor.execute(
@@ -1302,6 +1314,7 @@ def run_scan(scan_name: str, user_id: int, limit: int = None,
                         page["PageURL"], sys_p, user_msg,
                         provider=provider,
                     )
+                    api_call_total += 1
                     improvements = _parse_json_response(raw)
                     _save_content_improvements(
                         conn, scan_id, content_prompt.PromptID,
@@ -1315,6 +1328,8 @@ def run_scan(scan_name: str, user_id: int, limit: int = None,
                 except PromptTooLargeError:
                     pass  # already printed + logged; skip this page
                 except Exception as exc:
+                    api_call_total  += 1
+                    api_call_failed += 1
                     err = f"Content analysis failed for {page['PageURL']}: {exc}"
                     print(f"    WARNING: {err}")
                     cursor.execute(
@@ -1328,13 +1343,22 @@ def run_scan(scan_name: str, user_id: int, limit: int = None,
     # ── Phase 5: Completion ───────────────────────────────────────────────
     print(f"\n--- Phase 5: Completion ---")
     end_time = datetime.utcnow()
+
+    # If every LLM call failed (and there was at least one), mark as Failed so
+    # the error banner is shown prominently on the scan detail page.
+    all_calls_failed = (api_call_total > 0 and api_call_failed == api_call_total)
+    final_status = "Failed" if all_calls_failed else "Completed"
+
+    if all_calls_failed:
+        print(f"  WARNING: All {api_call_total} AI API call(s) failed — marking scan as Failed.")
+
     cursor.execute(
         f"""
         UPDATE {TP}Scans
-        SET Status = 'Completed', EndedAt = ?
+        SET Status = ?, EndedAt = ?
         WHERE ScanID = ?
         """,
-        (end_time, scan_id),
+        (final_status, end_time, scan_id),
     )
     skipped = []
     if skip_keyword:         skipped.append("KeywordExtraction")
