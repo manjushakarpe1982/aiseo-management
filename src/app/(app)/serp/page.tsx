@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
+import { useSearchParams } from 'next/navigation';
 import type { SerpURL, URLMetric } from '@/lib/types';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -441,14 +442,15 @@ function URLRow({ url, onMetricAdded }: { url: SerpURL; onMetricAdded: (urlId: n
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function SERPTrackerPage() {
+  const searchParams    = useSearchParams();
   const [urls,          setUrls]          = useState<SerpURL[]>([]);
   const [loading,       setLoading]       = useState(true);
   const [needsSetup,    setNeedsSetup]    = useState(false);
   const [dateFrom,      setDateFrom]      = useState(daysAgoStr(90));
   const [dateTo,        setDateTo]        = useState(todayStr());
   const [filterPriority,setFilterPriority]= useState('all');
-  const [search,        setSearch]        = useState('');
-  const [onlyWithData,  setOnlyWithData]  = useState(true);
+  const [search,        setSearch]        = useState(() => searchParams.get('q') ?? '');
+  const [onlyWithData,  setOnlyWithData]  = useState(() => !searchParams.get('q'));
 
   async function fetchData() {
     setLoading(true);
