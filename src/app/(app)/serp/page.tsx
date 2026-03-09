@@ -438,6 +438,150 @@ function URLRow({ url, onMetricAdded }: { url: SerpURL; onMetricAdded: (urlId: n
   );
 }
 
+// ── Add URL modal ─────────────────────────────────────────────────────────────
+
+function AddURLModal({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
+  const [pageURL,      setPageURL]      = useState('');
+  const [primaryKw,    setPrimaryKw]    = useState('');
+  const [secondaryKws, setSecondaryKws] = useState('');
+  const [priority,     setPriority]     = useState('Medium');
+  const [pageTitle,    setPageTitle]    = useState('');
+  const [saving,       setSaving]       = useState(false);
+  const [error,        setError]        = useState('');
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!pageURL.trim()) { setError('URL is required'); return; }
+    setSaving(true); setError('');
+    try {
+      const res = await fetch('/api/urls', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pageURL:           pageURL.trim(),
+          pageTitle:         pageTitle.trim() || null,
+          primaryKeyword:    primaryKw.trim()    || null,
+          secondaryKeywords: secondaryKws.trim() || null,
+          priority:          priority || null,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to add URL');
+      onAdded();
+      onClose();
+    } catch (err: any) { setError(err.message); }
+    finally { setSaving(false); }
+  }
+
+  const inp = 'w-full px-3 py-2 rounded-xl border border-border bg-surface text-sm text-ink focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition';
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-surface rounded-2xl border border-border shadow-2xl w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+          <div>
+            <h2 className="text-base font-bold font-display text-ink">Add URL to Track</h2>
+            <p className="text-xs text-muted mt-0.5">The URL will appear in SERP Tracker once data is synced</p>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-muted hover:text-ink hover:bg-surface2 transition-colors">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
+          {/* URL */}
+          <div>
+            <label className="block text-xs font-semibold text-ink-2 mb-1.5">
+              Page URL <span className="text-danger">*</span>
+            </label>
+            <input
+              type="url" value={pageURL} onChange={(e) => setPageURL(e.target.value)}
+              placeholder="https://boldpreciousmetals.com/silver-coins/"
+              className={inp} autoFocus
+            />
+          </div>
+
+          {/* Primary keyword */}
+          <div>
+            <label className="block text-xs font-semibold text-ink-2 mb-1.5">
+              Primary Keyword <span className="text-muted font-normal">(used for SERP + volume lookup)</span>
+            </label>
+            <input
+              type="text" value={primaryKw} onChange={(e) => setPrimaryKw(e.target.value)}
+              placeholder="e.g. 1 oz silver coins"
+              className={inp}
+            />
+          </div>
+
+          {/* Secondary keywords */}
+          <div>
+            <label className="block text-xs font-semibold text-ink-2 mb-1.5">
+              Secondary Keywords <span className="text-muted font-normal">(comma-separated, optional)</span>
+            </label>
+            <input
+              type="text" value={secondaryKws} onChange={(e) => setSecondaryKws(e.target.value)}
+              placeholder="e.g. buy silver coins, silver coin price"
+              className={inp}
+            />
+          </div>
+
+          {/* Priority + Page title — side by side */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-ink-2 mb-1.5">Priority</label>
+              <select value={priority} onChange={(e) => setPriority(e.target.value)} className={inp}>
+                <option value="High">High</option>
+                <option value="Medium">Medium</option>
+                <option value="Low">Low</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-ink-2 mb-1.5">Page Title <span className="text-muted font-normal">(optional)</span></label>
+              <input
+                type="text" value={pageTitle} onChange={(e) => setPageTitle(e.target.value)}
+                placeholder="e.g. Silver Coins"
+                className={inp}
+              />
+            </div>
+          </div>
+
+          {error && (
+            <div className="flex items-center gap-2 text-sm text-danger bg-red-50 border border-red-200 rounded-xl px-3 py-2">
+              <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              {error}
+            </div>
+          )}
+
+          {/* Actions */}
+          <div className="flex gap-3 pt-1">
+            <button type="submit" disabled={saving}
+              className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-primary hover:bg-blue-600 text-white text-sm font-semibold rounded-xl transition-colors disabled:opacity-60">
+              {saving ? <><Spinner /> Adding…</> : (
+                <>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                  </svg>
+                  Add URL
+                </>
+              )}
+            </button>
+            <button type="button" onClick={onClose}
+              className="px-5 py-2.5 border border-border text-ink-2 text-sm rounded-xl hover:bg-surface2 transition-colors">
+              Cancel
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function SERPTrackerPage() {
@@ -449,6 +593,7 @@ export default function SERPTrackerPage() {
   const [filterPriority,setFilterPriority]= useState('all');
   const [search,        setSearch]        = useState('');
   const [onlyWithData,  setOnlyWithData]  = useState(true);
+  const [showAddModal,  setShowAddModal]  = useState(false);
 
   async function fetchData() {
     setLoading(true);
@@ -511,10 +656,29 @@ export default function SERPTrackerPage() {
     <div className="animate-fade-slide space-y-6">
 
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold font-display text-ink">SERP Tracker</h1>
-        <p className="text-muted text-sm mt-1">Track search engine rankings and volume over time</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold font-display text-ink">SERP Tracker</h1>
+          <p className="text-muted text-sm mt-1">Track search engine rankings and volume over time</p>
+        </div>
+        <button
+          onClick={() => setShowAddModal(true)}
+          className="flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-blue-600 text-white text-sm font-semibold rounded-xl transition-colors flex-shrink-0"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+          </svg>
+          Add URL to Track
+        </button>
       </div>
+
+      {/* Add URL modal */}
+      {showAddModal && (
+        <AddURLModal
+          onClose={() => setShowAddModal(false)}
+          onAdded={() => { setOnlyWithData(false); fetchData(); }}
+        />
+      )}
 
       {/* Setup needed */}
       {needsSetup && (
@@ -609,10 +773,27 @@ export default function SERPTrackerPage() {
               <svg className="w-10 h-10 mx-auto mb-3 text-border" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
               </svg>
-              <p className="font-medium">No URLs found</p>
-              <p className="text-sm mt-1">
-                {onlyWithData ? 'No URLs have SERP data yet. Add some entries from the URL Registry or turn off "Only tracked URLs".' : 'No URLs match your filters.'}
-              </p>
+              <p className="font-medium text-ink">No URLs found</p>
+              {urls.length === 0 ? (
+                <div className="mt-3 space-y-2">
+                  <p className="text-sm">No URLs are being tracked yet.</p>
+                  <button
+                    onClick={() => setShowAddModal(true)}
+                    className="inline-flex items-center gap-2 mt-2 px-5 py-2.5 bg-primary hover:bg-blue-600 text-white text-sm font-semibold rounded-xl transition-colors"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                    </svg>
+                    Add your first URL to track
+                  </button>
+                </div>
+              ) : (
+                <p className="text-sm mt-1">
+                  {onlyWithData
+                    ? 'No URLs have SERP data yet. Run the Python sync, or turn off "Only tracked URLs" to see all.'
+                    : 'No URLs match your filters.'}
+                </p>
+              )}
             </div>
           ) : (
             <div className="space-y-2">
