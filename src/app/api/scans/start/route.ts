@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
     const runId = `NEXTJS_${Date.now()}`;
 
     // ── Build Python CLI args ─────────────────────────────────────────────
-    const scriptDir = path.join(process.cwd(), '..');  // /Desktop/Claude/
+    const scriptDir = process.cwd();  // project root: aiseo-management/
     const args: string[] = [
       path.join(scriptDir, 'run_scan.py'),
       'scan',
@@ -117,7 +117,7 @@ export async function POST(req: NextRequest) {
     const scanId: number = scanResult.recordset[0].ScanID;
 
     // ── Launch Python in background ───────────────────────────────────────
-    const child = spawn('python3', args, {
+    const child = spawn('python', args, {
       detached: true,
       stdio:    'ignore',
       cwd:      scriptDir,

@@ -15,6 +15,7 @@ AISEO_Claude_Data_Reference.docx
 .claude/
 
 # Node / Next.js
-aiseo-app/node_modules/
-aiseo-app/.next/
-aiseo-app/.env.local
+node_modules/
+.next/
+.env.local
+tsconfig.tsbuildinfo

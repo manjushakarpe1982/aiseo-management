@@ -11,19 +11,21 @@ DB_PWD    = os.environ.get("AISEO_DB_PWD",    "ash@2011")
 
 # ── Claude API ─────────────────────────────────────────────────────────────
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-CLAUDE_MODEL      = "claude-sonnet-4-20250514"
+CLAUDE_MODEL      = "claude-sonnet-4-6"
 
 # ── Gemini API ──────────────────────────────────────────────────────────────
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-GEMINI_MODEL   = "gemini-2.0-flash"
+GEMINI_MODEL   = "gemini-2.5-flash"
 
 # Pricing per million tokens (USD) for Gemini models.
 GEMINI_PRICING: dict = {
+    "gemini-2.5-flash":      (0.15, 0.60),
+    "gemini-2.5-pro":        (1.25, 10.00),
     "gemini-2.0-flash":      (0.10, 0.40),
     "gemini-1.5-pro":        (1.25, 5.00),
     "gemini-1.5-flash":      (0.075, 0.30),
 }
-GEMINI_PRICING_DEFAULT = (0.10, 0.40)
+GEMINI_PRICING_DEFAULT = (0.15, 0.60)
 
 
 def get_gemini_pricing(model: str) -> tuple:
@@ -37,11 +39,13 @@ def get_gemini_pricing(model: str) -> tuple:
 # Gemini Context Caching — cache read price per million tokens (~75 % cheaper than input).
 # Source: https://ai.google.dev/pricing
 GEMINI_CACHE_READ_PRICING: dict = {
+    "gemini-2.5-flash": 0.0375,
+    "gemini-2.5-pro":   0.3125,
     "gemini-2.0-flash": 0.025,
     "gemini-1.5-pro":   0.3125,
     "gemini-1.5-flash": 0.01875,
 }
-GEMINI_CACHE_READ_PRICING_DEFAULT = 0.025
+GEMINI_CACHE_READ_PRICING_DEFAULT = 0.0375
 
 
 def get_gemini_cache_read_pricing(model: str) -> float:
