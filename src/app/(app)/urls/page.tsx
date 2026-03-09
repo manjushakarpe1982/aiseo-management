@@ -270,8 +270,6 @@ export default function URLsPage() {
   const [showAdd,        setShowAdd]        = useState(false);
   const [editURL,        setEditURL]        = useState<SiteURL | null>(null);
   const [togglingId,     setTogglingId]     = useState<number | null>(null);
-  const [deletingId,     setDeletingId]     = useState<number | null>(null);
-  const [confirmDeleteId,setConfirmDeleteId]= useState<number | null>(null);
 
   async function fetchURLs() {
     setLoading(true);
@@ -309,17 +307,6 @@ export default function URLsPage() {
       setUrls((prev) => prev.map((u) => u.URLID === url.URLID ? { ...u, IsActive: !url.IsActive } : u));
     } catch (err) { console.error(err); }
     finally { setTogglingId(null); }
-  }
-
-  async function deleteURL(id: number) {
-    setDeletingId(id);
-    try {
-      const res = await fetch(`/api/urls/${id}`, { method: 'DELETE' });
-      if (!res.ok) { const d = await res.json(); throw new Error(d.error || 'Failed'); }
-      setUrls((prev) => prev.filter((u) => u.URLID !== id));
-      setConfirmDeleteId(null);
-    } catch (err: any) { alert(err.message); }
-    finally { setDeletingId(null); }
   }
 
   const filtered = useMemo(() => urls.filter((u) => {
@@ -470,7 +457,10 @@ export default function URLsPage() {
                   {filtered.map((u) => (
                     <tr key={u.URLID} className="hover:bg-surface2/50 transition-colors">
                       <td className="px-4 py-3 max-w-xs">
-                        <div className="font-mono text-sm text-ink truncate" title={u.PageURL}>{pathOf(u.PageURL)}</div>
+                        <a href={u.PageURL} target="_blank" rel="noopener noreferrer"
+                          className="font-mono text-sm text-primary hover:underline truncate block" title={u.PageURL}>
+                          {pathOf(u.PageURL)}
+                        </a>
                         {u.PageTitle && <div className="text-xs text-muted mt-0.5 truncate">{u.PageTitle}</div>}
                       </td>
                       <td className="px-4 py-3 hidden md:table-cell max-w-[180px]">
@@ -499,7 +489,7 @@ export default function URLsPage() {
                               <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                             </svg>
                           </button>
-                          {/* Toggle active */}
+                          {/* Toggle active / deactivate */}
                           <button onClick={() => toggleActive(u)} disabled={togglingId === u.URLID}
                             title={u.IsActive ? 'Deactivate' : 'Activate'}
                             className={`w-7 h-7 flex items-center justify-center rounded-lg transition-colors
@@ -514,31 +504,6 @@ export default function URLsPage() {
                               </svg>
                             )}
                           </button>
-                          {/* Open URL */}
-                          <a href={u.PageURL} target="_blank" rel="noopener noreferrer" title="Open URL"
-                            className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:text-ink hover:bg-surface2 transition-colors">
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                            </svg>
-                          </a>
-                          {/* Delete */}
-                          {confirmDeleteId === u.URLID ? (
-                            <div className="flex items-center gap-1">
-                              <button onClick={() => deleteURL(u.URLID)} disabled={deletingId === u.URLID}
-                                className="flex items-center gap-1 px-2 py-1 bg-danger hover:bg-red-600 text-white text-xs font-semibold rounded-lg transition-colors disabled:opacity-60">
-                                {deletingId === u.URLID ? <Spinner /> : 'Yes, delete'}
-                              </button>
-                              <button onClick={() => setConfirmDeleteId(null)}
-                                className="px-2 py-1 border border-border text-xs rounded-lg hover:bg-surface2 transition-colors">No</button>
-                            </div>
-                          ) : (
-                            <button onClick={() => setConfirmDeleteId(u.URLID)} title="Delete URL"
-                              className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:text-danger hover:bg-danger-light transition-colors">
-                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                              </svg>
-                            </button>
-                          )}
                         </div>
                       </td>
                     </tr>
