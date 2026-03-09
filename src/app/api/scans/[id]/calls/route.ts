@@ -17,6 +17,7 @@ export async function GET(
           CallID, ScanID, CallType, EntityURL,
           SystemPrompt, UserMessage, RawResponse,
           CallSucceeded, InputCharsEstimate, OutputCharsEstimate,
+          InputTokens, OutputTokens, CacheWriteTokens, CacheReadTokens, CostUSD,
           CalledAt, DurationMs, ErrorMessage
         FROM ClCode_ClaudeCallLog
         WHERE ScanID = @id

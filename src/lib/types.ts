@@ -110,6 +110,11 @@ export interface ClaudeCallLog {
   CallSucceeded: boolean | null;
   InputCharsEstimate: number | null;
   OutputCharsEstimate: number | null;
+  InputTokens: number | null;
+  OutputTokens: number | null;
+  CacheWriteTokens: number | null;
+  CacheReadTokens: number | null;
+  CostUSD: number | null;
   CalledAt: string | null;
   DurationMs: number | null;
   ErrorMessage: string | null;
