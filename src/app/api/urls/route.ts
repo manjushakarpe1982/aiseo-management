@@ -3,7 +3,7 @@ import { getDb, sql } from '@/lib/db';
 import { getSessionUser } from '@/lib/session';
 
 /**
- * GET /api/urls  — list all URLs with scan stats
+ * GET /api/urls  — list all URLs with scan stats + latest SERP/volume
  * POST /api/urls — add a new URL
  */
 
@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
   try {
     const db = await getDb();
 
-    // Check the table exists first
+    // Check the URLs table exists first
     const tableCheck = await db.request().query(`
       SELECT COUNT(1) AS cnt
       FROM INFORMATION_SCHEMA.TABLES
@@ -23,6 +23,28 @@ export async function GET(req: NextRequest) {
     if (tableCheck.recordset[0].cnt === 0) {
       return NextResponse.json({ urls: [], needsSetup: true });
     }
+
+    // Check if metrics table exists — add subqueries only if it does
+    const metricsCheck = await db.request().query(`
+      SELECT COUNT(1) AS cnt
+      FROM INFORMATION_SCHEMA.TABLES
+      WHERE TABLE_NAME = 'ClCode_URLMetrics'
+    `);
+    const hasMetrics = metricsCheck.recordset[0].cnt > 0;
+
+    const metricsColumns = hasMetrics
+      ? `,
+        (SELECT TOP 1 m.SERPPosition
+           FROM ClCode_URLMetrics m WHERE m.URLID = u.URLID
+           ORDER BY m.RecordedDate DESC) AS LatestSERPPosition,
+        (SELECT TOP 1 m.SearchVolume
+           FROM ClCode_URLMetrics m WHERE m.URLID = u.URLID
+           ORDER BY m.RecordedDate DESC) AS LatestSearchVolume,
+        CONVERT(VARCHAR(10),
+          (SELECT TOP 1 m.RecordedDate
+             FROM ClCode_URLMetrics m WHERE m.URLID = u.URLID
+             ORDER BY m.RecordedDate DESC), 23) AS LatestMetricDate`
+      : `, NULL AS LatestSERPPosition, NULL AS LatestSearchVolume, NULL AS LatestMetricDate`;
 
     const result = await db.request().query(`
       SELECT
@@ -41,6 +63,7 @@ export async function GET(req: NextRequest) {
         u.LastScannedAt,
         u.CreatedAt,
         u.UpdatedAt
+        ${metricsColumns}
       FROM ClCode_URLs u
       ORDER BY u.PageURL
     `);
@@ -63,15 +86,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'pageURL is required' }, { status: 400 });
   }
 
-  // Basic URL validation
   let cleanURL = pageURL.trim();
-  try {
-    new URL(cleanURL);
-  } catch {
-    return NextResponse.json({ error: 'Invalid URL format' }, { status: 400 });
-  }
+  try { new URL(cleanURL); }
+  catch { return NextResponse.json({ error: 'Invalid URL format' }, { status: 400 }); }
 
-  // Validate priority
   if (priority && !['High', 'Medium', 'Low'].includes(priority)) {
     return NextResponse.json({ error: 'Priority must be High, Medium, or Low' }, { status: 400 });
   }

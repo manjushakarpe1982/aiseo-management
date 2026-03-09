@@ -168,6 +168,22 @@ export interface SiteURL {
   LastScannedAt: string | null;
   CreatedAt: string | null;
   UpdatedAt: string | null;
+  // Latest metric fields (joined from ClCode_URLMetrics)
+  LatestSERPPosition: number | null;
+  LatestSearchVolume: number | null;
+  LatestMetricDate: string | null;
+}
+
+// ─── SERP tracker URL (URL + full metrics array) ──────────────────────────────
+
+export interface SerpURL {
+  URLID: number;
+  PageURL: string;
+  PrimaryKeyword: string | null;
+  SecondaryKeywords: string | null;
+  Priority: 'High' | 'Medium' | 'Low' | null;
+  IsActive: boolean;
+  metrics: URLMetric[];
 }
 
 // ─── URL Metrics (day-wise SERP + search volume) ──────────────────────────────
