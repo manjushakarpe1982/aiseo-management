@@ -5,9 +5,9 @@ import { getSessionUser } from '@/lib/session';
 /**
  * POST /api/urls/setup
  *
- * Creates ClCode_URLs and ClCode_ScanURLs tables if they don't exist,
- * then imports any URLs from the legacy AISEO_PageSEOInputs table that
- * aren't already present in ClCode_URLs.
+ * Creates / migrates ClCode_URLs and ClCode_ScanURLs tables,
+ * creates ClCode_URLMetrics table, then imports any URLs from
+ * the legacy AISEO_PageSEOInputs table that aren't already present.
  *
  * Idempotent – safe to call more than once.
  */
@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
   try {
     const db = await getDb();
 
-    // ── 1. Create ClCode_URLs ───────────────────────────────────────────────
+    // ── 1. Create ClCode_URLs (fresh install) ──────────────────────────────
     await db.request().query(`
       IF NOT EXISTS (
         SELECT 1 FROM INFORMATION_SCHEMA.TABLES
@@ -27,26 +27,54 @@ export async function POST(req: NextRequest) {
       )
       BEGIN
         CREATE TABLE ClCode_URLs (
-          URLID             INT            NOT NULL IDENTITY(1,1) PRIMARY KEY,
-          PageURL           NVARCHAR(2048) NOT NULL,
-          PageTitle         NVARCHAR(512)  NULL,
-          TreeCluster       NVARCHAR(256)  NULL,
-          IsActive          BIT            NOT NULL DEFAULT 1,
-          Notes             NVARCHAR(1024) NULL,
-          ScanRunCount      INT            NOT NULL DEFAULT 0,
-          SuggestionsApplied INT           NOT NULL DEFAULT 0,
-          LastScanID        INT            NULL,
-          LastScannedAt     DATETIME2      NULL,
-          CreatedAt         DATETIME2      NOT NULL DEFAULT GETUTCDATE(),
-          CreatedByUserID   INT            NULL,
-          UpdatedAt         DATETIME2      NULL,
-          UpdatedByUserID   INT            NULL,
+          URLID              INT            NOT NULL IDENTITY(1,1) PRIMARY KEY,
+          PageURL            NVARCHAR(2048) NOT NULL,
+          PageTitle          NVARCHAR(512)  NULL,
+          TreeCluster        NVARCHAR(256)  NULL,
+          IsActive           BIT            NOT NULL DEFAULT 1,
+          Notes              NVARCHAR(1024) NULL,
+          PrimaryKeyword     NVARCHAR(512)  NULL,
+          SecondaryKeywords  NVARCHAR(MAX)  NULL,
+          Priority           NVARCHAR(20)   NULL,
+          ScanRunCount       INT            NOT NULL DEFAULT 0,
+          SuggestionsApplied INT            NOT NULL DEFAULT 0,
+          LastScanID         INT            NULL,
+          LastScannedAt      DATETIME2      NULL,
+          CreatedAt          DATETIME2      NOT NULL DEFAULT GETUTCDATE(),
+          CreatedByUserID    INT            NULL,
+          UpdatedAt          DATETIME2      NULL,
+          UpdatedByUserID    INT            NULL,
           CONSTRAINT UQ_ClCode_URLs_PageURL UNIQUE (PageURL)
         );
       END
     `);
 
-    // ── 2. Create ClCode_ScanURLs (junction) ───────────────────────────────
+    // ── 2. Migrate existing ClCode_URLs – add new columns if missing ───────
+    await db.request().query(`
+      IF NOT EXISTS (
+        SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_NAME = 'ClCode_URLs' AND COLUMN_NAME = 'PrimaryKeyword'
+      )
+        ALTER TABLE ClCode_URLs ADD PrimaryKeyword NVARCHAR(512) NULL;
+    `);
+
+    await db.request().query(`
+      IF NOT EXISTS (
+        SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_NAME = 'ClCode_URLs' AND COLUMN_NAME = 'SecondaryKeywords'
+      )
+        ALTER TABLE ClCode_URLs ADD SecondaryKeywords NVARCHAR(MAX) NULL;
+    `);
+
+    await db.request().query(`
+      IF NOT EXISTS (
+        SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_NAME = 'ClCode_URLs' AND COLUMN_NAME = 'Priority'
+      )
+        ALTER TABLE ClCode_URLs ADD Priority NVARCHAR(20) NULL;
+    `);
+
+    // ── 3. Create ClCode_ScanURLs (junction) ───────────────────────────────
     await db.request().query(`
       IF NOT EXISTS (
         SELECT 1 FROM INFORMATION_SCHEMA.TABLES
@@ -62,8 +90,28 @@ export async function POST(req: NextRequest) {
       END
     `);
 
-    // ── 3. Import from legacy AISEO_PageSEOInputs ─────────────────────────
-    // Only runs if the old table exists
+    // ── 4. Create ClCode_URLMetrics (day-wise SERP + search volume) ────────
+    await db.request().query(`
+      IF NOT EXISTS (
+        SELECT 1 FROM INFORMATION_SCHEMA.TABLES
+        WHERE TABLE_NAME = 'ClCode_URLMetrics'
+      )
+      BEGIN
+        CREATE TABLE ClCode_URLMetrics (
+          MetricID        INT            NOT NULL IDENTITY(1,1) PRIMARY KEY,
+          URLID           INT            NOT NULL,
+          RecordedDate    DATE           NOT NULL,
+          SERPPosition    INT            NULL,
+          SearchVolume    INT            NULL,
+          Notes           NVARCHAR(512)  NULL,
+          CreatedAt       DATETIME2      NOT NULL DEFAULT GETUTCDATE(),
+          CreatedByUserID INT            NULL,
+          CONSTRAINT UQ_ClCode_URLMetrics_URL_Date UNIQUE (URLID, RecordedDate)
+        );
+      END
+    `);
+
+    // ── 5. Import from legacy AISEO_PageSEOInputs ─────────────────────────
     let importedCount = 0;
     const tableCheck = await db.request().query(`
       SELECT COUNT(1) AS cnt
@@ -91,7 +139,7 @@ export async function POST(req: NextRequest) {
       importedCount = importResult.rowsAffected[0];
     }
 
-    // ── 4. Return summary ──────────────────────────────────────────────────
+    // ── 6. Return summary ──────────────────────────────────────────────────
     const totalResult = await db.request().query(
       `SELECT COUNT(1) AS total FROM ClCode_URLs`
     );

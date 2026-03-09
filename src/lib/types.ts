@@ -159,12 +159,28 @@ export interface SiteURL {
   TreeCluster: string | null;
   IsActive: boolean;
   Notes: string | null;
+  PrimaryKeyword: string | null;
+  SecondaryKeywords: string | null;
+  Priority: 'High' | 'Medium' | 'Low' | null;
   ScanRunCount: number;
   SuggestionsApplied: number;
   LastScanID: number | null;
   LastScannedAt: string | null;
   CreatedAt: string | null;
   UpdatedAt: string | null;
+}
+
+// ─── URL Metrics (day-wise SERP + search volume) ──────────────────────────────
+
+export interface URLMetric {
+  MetricID: number;
+  URLID: number;
+  RecordedDate: string;   // DATE returned as 'YYYY-MM-DD'
+  SERPPosition: number | null;
+  SearchVolume: number | null;
+  Notes: string | null;
+  CreatedAt: string;
+  CreatedByUserID: number | null;
 }
 
 // ─── Dashboard ───────────────────────────────────────────────────────────────

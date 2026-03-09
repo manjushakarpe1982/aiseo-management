@@ -32,6 +32,9 @@ export async function GET(req: NextRequest) {
         u.TreeCluster,
         u.IsActive,
         u.Notes,
+        u.PrimaryKeyword,
+        u.SecondaryKeywords,
+        u.Priority,
         u.ScanRunCount,
         u.SuggestionsApplied,
         u.LastScanID,
@@ -54,7 +57,7 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
   const body = await req.json();
-  const { pageURL, pageTitle, notes } = body;
+  const { pageURL, pageTitle, notes, primaryKeyword, secondaryKeywords, priority } = body;
 
   if (!pageURL || !pageURL.trim()) {
     return NextResponse.json({ error: 'pageURL is required' }, { status: 400 });
@@ -68,17 +71,27 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid URL format' }, { status: 400 });
   }
 
+  // Validate priority
+  if (priority && !['High', 'Medium', 'Low'].includes(priority)) {
+    return NextResponse.json({ error: 'Priority must be High, Medium, or Low' }, { status: 400 });
+  }
+
   try {
     const db = await getDb();
     const result = await db.request()
-      .input('pageURL', sql.NVarChar, cleanURL)
-      .input('pageTitle', sql.NVarChar, pageTitle?.trim() || null)
-      .input('notes', sql.NVarChar, notes?.trim() || null)
-      .input('userId', sql.Int, session.userId)
+      .input('pageURL',           sql.NVarChar, cleanURL)
+      .input('pageTitle',         sql.NVarChar, pageTitle?.trim()         || null)
+      .input('notes',             sql.NVarChar, notes?.trim()             || null)
+      .input('primaryKeyword',    sql.NVarChar, primaryKeyword?.trim()    || null)
+      .input('secondaryKeywords', sql.NVarChar, secondaryKeywords?.trim() || null)
+      .input('priority',          sql.NVarChar, priority                  || null)
+      .input('userId',            sql.Int,      session.userId)
       .query(`
-        INSERT INTO ClCode_URLs (PageURL, PageTitle, Notes, CreatedAt, CreatedByUserID)
+        INSERT INTO ClCode_URLs
+          (PageURL, PageTitle, Notes, PrimaryKeyword, SecondaryKeywords, Priority, CreatedAt, CreatedByUserID)
         OUTPUT INSERTED.*
-        VALUES (@pageURL, @pageTitle, @notes, GETUTCDATE(), @userId)
+        VALUES
+          (@pageURL, @pageTitle, @notes, @primaryKeyword, @secondaryKeywords, @priority, GETUTCDATE(), @userId)
       `);
 
     return NextResponse.json({ url: result.recordset[0] }, { status: 201 });
