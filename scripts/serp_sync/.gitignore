@@ -1,0 +1,6 @@
+# Never commit OAuth tokens or virtual env
+gsc_token.json
+venv/
+__pycache__/
+*.pyc
+*.log
