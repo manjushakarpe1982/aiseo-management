@@ -15,10 +15,13 @@ DB_UID    = os.environ.get("AISEO_DB_UID",    "sa")
 DB_PWD    = os.environ.get("AISEO_DB_PWD",    "ash@2011")
 
 # ── Google Search Console ──────────────────────────────────────────────────
-# OAuth2 client credentials (installed / desktop type — supports run_local_server)
+# OAuth2 client credentials — must be "Desktop app" type (NOT "Web application").
+# Create in Google Cloud Console → boldpreciousmetals project →
+#   APIs & Services → Credentials → + Create Credentials → OAuth 2.0 Client ID
+#   → Application type: Desktop app → Download JSON → save as bpm_gsc_desktop.json
 GSC_CLIENT_SECRET_FILE = os.environ.get(
     "GSC_CLIENT_SECRET_FILE",
-    os.path.join(KEYS_DIR, "bpm_client_secret.json"),
+    os.path.join(KEYS_DIR, "bpm_gsc_desktop.json"),
 )
 # Token saved after first OAuth flow — reused on subsequent runs
 GSC_TOKEN_FILE = os.environ.get(
