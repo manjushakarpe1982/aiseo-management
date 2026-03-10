@@ -38,6 +38,7 @@ function URLSelector({
   const [needsSetup, setNeedsSetup] = useState(false);
   const [search, setSearch] = useState('');
   const [groups, setGroups] = useState<Array<{ GroupID: number; GroupName: string; memberIds: number[] }>>([]);
+  const [groupsReady, setGroupsReady] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState('');
   const [groupLoading, setGroupLoading] = useState(false);
 
@@ -55,19 +56,21 @@ function URLSelector({
     fetch('/api/url-groups')
       .then((r) => r.json())
       .then(async (d) => {
-        if (!d.groups?.length) return;
-        const details = await Promise.all(
-          d.groups.map((g: any) =>
-            fetch(`/api/url-groups/${g.GroupID}`).then((r) => r.json()).then((x) => ({
-              GroupID: g.GroupID,
-              GroupName: g.GroupName,
-              memberIds: (x.group?.members ?? []).map((m: any) => m.URLID),
-            }))
-          )
-        );
-        setGroups(details);
+        if (d.groups?.length) {
+          const details = await Promise.all(
+            d.groups.map((g: any) =>
+              fetch(`/api/url-groups/${g.GroupID}`).then((r) => r.json()).then((x) => ({
+                GroupID: g.GroupID,
+                GroupName: g.GroupName,
+                memberIds: (x.group?.members ?? []).map((m: any) => m.URLID),
+              }))
+            )
+          );
+          setGroups(details);
+        }
+        setGroupsReady(true);
       })
-      .catch(() => {});
+      .catch(() => { setGroupsReady(true); });
   }, []);
 
   async function handleGroupSelect(groupId: string) {
@@ -176,26 +179,35 @@ function URLSelector({
       <div className="space-y-2">
 
         {/* Group quick-select */}
-        {groups.length > 0 && (
-          <div className="flex items-center gap-2">
-            <svg className="w-3.5 h-3.5 text-muted flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-            </svg>
-            <select
-              value={selectedGroup}
-              onChange={(e) => handleGroupSelect(e.target.value)}
-              className="flex-1 px-2.5 py-1.5 rounded-lg border border-border bg-surface2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
-            >
-              <option value="">Select by group…</option>
-              {groups.map((g) => (
-                <option key={g.GroupID} value={g.GroupID}>
-                  {g.GroupName} ({g.memberIds.length})
-                </option>
-              ))}
-            </select>
-            {groupLoading && <Spinner sm />}
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          <svg className="w-3.5 h-3.5 text-muted flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+          </svg>
+          {!groupsReady ? (
+            <span className="text-sm text-muted flex items-center gap-1.5"><Spinner sm /> Loading groups…</span>
+          ) : groups.length === 0 ? (
+            <span className="text-sm text-muted">
+              No groups yet —{' '}
+              <a href="/groups" className="text-primary hover:underline">create one in URL Groups</a>
+            </span>
+          ) : (
+            <>
+              <select
+                value={selectedGroup}
+                onChange={(e) => handleGroupSelect(e.target.value)}
+                className="flex-1 px-2.5 py-1.5 rounded-lg border border-border bg-surface2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
+              >
+                <option value="">Select by group…</option>
+                {groups.map((g) => (
+                  <option key={g.GroupID} value={g.GroupID}>
+                    {g.GroupName} ({g.memberIds.length})
+                  </option>
+                ))}
+              </select>
+              {groupLoading && <Spinner sm />}
+            </>
+          )}
+        </div>
 
         {/* Search + select-all */}
         <div className="flex gap-2 items-center">
