@@ -389,7 +389,7 @@ export default function URLsPage() {
   const [groupSaving,    setGroupSaving]    = useState(false);
   const [groupName,      setGroupName]      = useState('');
   const [groupDesc,      setGroupDesc]      = useState('');
-  const [addToGroupId,   setAddToGroupId]   = useState<number | NaN>(NaN);
+  const [addToGroupId,   setAddToGroupId]   = useState<number>(NaN);
 
   async function fetchGroups() {
     try {

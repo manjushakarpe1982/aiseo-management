@@ -167,6 +167,238 @@ function IssueStatusRow({
   );
 }
 
+// ─── Push-to-DB helpers (client-side BPM page lookup) ─────────────────────────
+
+// Mirrors bpm-pages.ts but kept here as a plain client-safe map
+const BPM_PAGE_ID_MAP: Record<string, string> = {
+  'https://www.boldpreciousmetals.com/gold-bullion': 'gold-bullion',
+  'https://www.boldpreciousmetals.com/gold-bullion/gold-coins': 'gold-coins',
+  'https://www.boldpreciousmetals.com/gold-bullion/gold-coins/american-gold-eagle-coins': 'american-gold-eagle',
+};
+
+const PUSH_FIELD_MAP: Record<string, string> = {
+  'meta title':       'MetaTitle',
+  'meta description': 'MetaDescription',
+  'h1':               'H1',
+  'page content':     'Content',
+  'content':          'Content',
+  'canonical url':    'CanonicalUrl',
+  'canonical':        'CanonicalUrl',
+};
+
+function lookupBpmPageId(url: string | null | undefined): string | null {
+  if (!url) return null;
+  return BPM_PAGE_ID_MAP[url.replace(/\/$/, '')] ?? null;
+}
+
+function normalisePushField(name: string | null | undefined): string {
+  if (!name) return '';
+  return PUSH_FIELD_MAP[name.toLowerCase().trim()] ?? '';
+}
+
+// ─── Inline HTML editor ────────────────────────────────────────────────────────
+
+type HtmlTab = 'source' | 'preview';
+
+function InlineHtmlEditor({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [tab, setTab] = useState<HtmlTab>('source');
+  return (
+    <div className="rounded-lg border border-border overflow-hidden">
+      <div className="flex border-b border-border bg-surface2">
+        {(['source', 'preview'] as HtmlTab[]).map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={`px-4 py-2 text-sm font-medium transition-colors ${
+              tab === t
+                ? 'text-primary border-b-2 border-primary -mb-px bg-surface'
+                : 'text-muted hover:text-ink'
+            }`}
+          >
+            {t === 'source' ? 'HTML Source' : 'Preview'}
+          </button>
+        ))}
+      </div>
+      {tab === 'source' ? (
+        <textarea
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          rows={10}
+          className="w-full p-3 text-sm font-mono bg-surface text-ink focus:outline-none focus:ring-1 focus:ring-primary/30 resize-y"
+          placeholder="Enter HTML content…"
+        />
+      ) : (
+        <div
+          className="p-4 bg-white min-h-[120px] prose prose-sm max-w-none text-sm"
+          dangerouslySetInnerHTML={{ __html: value || '<em style="color:#999">Nothing to preview.</em>' }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── Push-to-DB panel ─────────────────────────────────────────────────────────
+
+function PushToDbPanel({ item, onDismiss }: { item: ContentImprovement; onDismiss: () => void }) {
+  const pageId   = lookupBpmPageId(item.PageURL);
+  const fieldKey = normalisePushField(item.FieldName);
+  const [value,   setValue]   = useState(item.SuggestedContent ?? '');
+  const [pushing, setPushing] = useState(false);
+  const [result,  setResult]  = useState<{ ok: boolean; msg: string } | null>(null);
+
+  const isContent   = fieldKey === 'Content';
+  const isMultiLine = fieldKey === 'MetaDescription';
+
+  if (!pageId) {
+    return (
+      <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 flex items-start gap-3">
+        <svg className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M12 3a9 9 0 110 18A9 9 0 0112 3z" />
+        </svg>
+        <div>
+          <p className="text-sm font-semibold text-amber-800">Not a BPM managed page</p>
+          <p className="text-sm text-amber-700 mt-0.5">
+            Push-to-DB is only available for pages configured in BPM Pages. This URL is not in the list.
+          </p>
+          <button onClick={onDismiss} className="mt-2 text-sm text-amber-700 font-medium hover:underline">Dismiss</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!fieldKey) {
+    return (
+      <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 flex items-start gap-3">
+        <svg className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M12 3a9 9 0 110 18A9 9 0 0112 3z" />
+        </svg>
+        <div>
+          <p className="text-sm font-semibold text-amber-800">Field not writable via Push-to-DB</p>
+          <p className="text-sm text-amber-700 mt-0.5">
+            &ldquo;{item.FieldName}&rdquo; is not a supported push field. Supported fields: MetaTitle, MetaDescription, H1, Page Content, CanonicalUrl.
+          </p>
+          <button onClick={onDismiss} className="mt-2 text-sm text-amber-700 font-medium hover:underline">Dismiss</button>
+        </div>
+      </div>
+    );
+  }
+
+  const handlePush = async () => {
+    setPushing(true);
+    setResult(null);
+    try {
+      const res  = await fetch('/api/bpm-seo', {
+        method:  'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ id: pageId, fields: { [fieldKey]: value } }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setResult({ ok: true, msg: `✓ ${fieldKey} updated in the database.` });
+      } else {
+        setResult({ ok: false, msg: data.error ?? 'Unknown error' });
+      }
+    } catch (err) {
+      setResult({ ok: false, msg: String(err) });
+    } finally {
+      setPushing(false);
+    }
+  };
+
+  return (
+    <div className="rounded-xl border border-primary/30 bg-blue-50/60 p-4 space-y-3">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-semibold text-ink">Push to Database</p>
+          <p className="text-xs text-muted mt-0.5">
+            Field: <span className="font-mono font-medium text-ink">{fieldKey}</span>
+            {' · '}Page: <span className="font-mono font-medium text-ink">{pageId}</span>
+          </p>
+        </div>
+        <button onClick={onDismiss} title="Cancel" className="text-muted hover:text-ink transition-colors">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      {/* Editor */}
+      {isContent ? (
+        <InlineHtmlEditor value={value} onChange={setValue} />
+      ) : isMultiLine ? (
+        <textarea
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          rows={3}
+          className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary resize-y"
+          placeholder={`Enter ${fieldKey}…`}
+        />
+      ) : (
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          className="w-full px-3 py-2 text-sm rounded-lg border border-border bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+          placeholder={`Enter ${fieldKey}…`}
+        />
+      )}
+
+      {/* Result feedback */}
+      {result && (
+        <div className={`flex items-center gap-2 text-sm rounded-lg px-3 py-2 ${
+          result.ok
+            ? 'bg-success-light border border-green-200 text-green-800'
+            : 'bg-red-50 border border-red-200 text-red-700'
+        }`}>
+          {result.ok ? (
+            <svg className="w-4 h-4 text-success flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          ) : (
+            <svg className="w-4 h-4 text-red-500 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M12 3a9 9 0 110 18A9 9 0 0112 3z" />
+            </svg>
+          )}
+          {result.msg}
+        </div>
+      )}
+
+      {/* Actions */}
+      <div className="flex items-center justify-end gap-2">
+        <button
+          onClick={onDismiss}
+          className="text-sm px-3 py-1.5 rounded-lg border border-border bg-surface hover:bg-surface2 text-ink-2 transition-colors"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={handlePush}
+          disabled={pushing || !value}
+          className="text-sm px-4 py-1.5 rounded-lg bg-primary hover:bg-blue-600 text-white font-semibold disabled:opacity-50 transition-colors flex items-center gap-2"
+        >
+          {pushing ? (
+            <>
+              <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              Pushing…
+            </>
+          ) : (
+            <>
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+              </svg>
+              Confirm Push to DB
+            </>
+          )}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Keywords Tab — helpers ───────────────────────────────────────────────────
 
 interface KwSuggestion {
@@ -676,6 +908,7 @@ function ContentTab({ scanId }: { scanId: number }) {
   const [items, setItems] = useState<ContentImprovement[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const [pushOpenId, setPushOpenId] = useState<number | null>(null);
 
   // ── Filter state ──
   const [filterPriority, setFilterPriority] = useState<PriorityFilter>('All');
@@ -875,15 +1108,37 @@ function ContentTab({ scanId }: { scanId: number }) {
                       <div className="rounded-xl border border-green-200 overflow-hidden">
                         <div className="px-4 py-2 bg-green-100 border-b border-green-200 flex items-center justify-between">
                           <p className="text-sm font-semibold text-success uppercase">✦ Suggested</p>
-                          {item.SuggestedCharCount !== null && (
-                            <span className="text-sm text-green-600 font-mono">{item.SuggestedCharCount} chars</span>
-                          )}
+                          <div className="flex items-center gap-2">
+                            {item.SuggestedCharCount !== null && (
+                              <span className="text-sm text-green-600 font-mono">{item.SuggestedCharCount} chars</span>
+                            )}
+                            {item.SuggestedContent && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setPushOpenId(pushOpenId === item.ImprovementID ? null : item.ImprovementID); }}
+                                className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-md bg-primary hover:bg-blue-600 text-white transition-colors"
+                                title="Push this suggestion to the database"
+                              >
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                                </svg>
+                                Push to DB
+                              </button>
+                            )}
+                          </div>
                         </div>
                         <div className="p-4 bg-success-light">
                           <p className="text-sm text-green-900 whitespace-pre-wrap leading-relaxed font-medium">{item.SuggestedContent || '—'}</p>
                         </div>
                       </div>
                     </div>
+
+                    {/* Push-to-DB panel */}
+                    {pushOpenId === item.ImprovementID && (
+                      <PushToDbPanel
+                        item={item}
+                        onDismiss={() => setPushOpenId(null)}
+                      />
+                    )}
 
                     {/* Reasoning + Impact */}
                     {(item.Reasoning || item.ImpactEstimate) && (
