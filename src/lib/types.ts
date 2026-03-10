@@ -199,6 +199,26 @@ export interface URLMetric {
   CreatedByUserID: number | null;
 }
 
+// ─── URL Groups ──────────────────────────────────────────────────────────────
+
+export interface URLGroup {
+  GroupID: number;
+  GroupName: string;
+  Description: string | null;
+  URLCount: number;
+  CreatedAt: string | null;
+}
+
+export interface URLGroupDetail extends URLGroup {
+  members: Array<{
+    URLID: number;
+    PageURL: string;
+    PageTitle: string | null;
+    PrimaryKeyword: string | null;
+    Priority: string | null;
+  }>;
+}
+
 // ─── Dashboard ───────────────────────────────────────────────────────────────
 
 export interface DashboardStats {

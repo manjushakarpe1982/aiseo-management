@@ -32,7 +32,7 @@ GSC_TOKEN_FILE = os.environ.get(
 # Use "sc-domain:boldpreciousmetals.com" for a Domain property instead
 GSC_SITE_URL = os.environ.get(
     "GSC_SITE_URL",
-    "https://boldpreciousmetals.com/",
+    "https://www.boldpreciousmetals.com/",
 )
 # OAuth scopes required
 GSC_SCOPES = ["https://www.googleapis.com/auth/webmasters.readonly"]

@@ -17,6 +17,7 @@ Usage:
 import sys
 import logging
 import os
+from calendar import monthrange
 from datetime import date, timedelta, datetime
 from typing import Optional
 
@@ -39,6 +40,18 @@ logging.basicConfig(
     ],
 )
 log = logging.getLogger(__name__)
+
+
+def _is_last_day_of_month(d: date) -> bool:
+    """Return True if d is the last calendar day of its month."""
+    _, last = monthrange(d.year, d.month)
+    return d.day == last
+
+
+def _last_day_of_month(d: date) -> date:
+    """Return the last day of d's month."""
+    _, last = monthrange(d.year, d.month)
+    return d.replace(day=last)
 
 
 # ── Core sync ─────────────────────────────────────────────────────────────
@@ -91,6 +104,8 @@ def run(target_date: Optional[date] = None) -> dict:
         return summary
 
     # ── 4. Collect unique primary keywords for Google Ads ─────────────────
+    # Search volumes are monthly averages — only fetch on the last day of each
+    # month to avoid redundant API calls every day.
     keywords = list({
         u["PrimaryKeyword"].strip()
         for u in urls
@@ -98,11 +113,20 @@ def run(target_date: Optional[date] = None) -> dict:
     })
     log.info(f"Unique primary keywords to look up: {len(keywords)}")
 
-    try:
-        volume_map = gads_fetcher.get_search_volumes(keywords)
-    except Exception as exc:
-        log.error(f"Google Ads fetch failed: {exc}", exc_info=True)
-        volume_map = {}  # Continue without volumes rather than aborting
+    fetch_volume = _is_last_day_of_month(target_date)
+    if keywords and fetch_volume:
+        log.info(f"Last day of month — fetching search volumes for {len(keywords)} keyword(s) ...")
+        try:
+            volume_map = gads_fetcher.get_search_volumes(keywords)
+        except Exception as exc:
+            log.error(f"Google Ads fetch failed: {exc}", exc_info=True)
+            volume_map = {}
+    elif keywords:
+        next_vol_date = _last_day_of_month(target_date)
+        log.info(f"Skipping volume fetch (not last day of month — next fetch: {next_vol_date})")
+        volume_map = {}
+    else:
+        volume_map = {}
 
     # ── 5. Write metrics per URL ───────────────────────────────────────────
     log.info("Writing metrics ...")

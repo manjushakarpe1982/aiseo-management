@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import type { SiteURL } from '@/lib/types';
+import type { SiteURL, URLGroup } from '@/lib/types';
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -256,6 +256,118 @@ function EditURLModal({ url, onClose, onSaved }: { url: SiteURL; onClose: () => 
   );
 }
 
+// ── Import Sheet Modal ────────────────────────────────────────────────────────
+
+function ImportSheetModal({ onClose, onImported }: { onClose: () => void; onImported: () => void }) {
+  const [sheetUrl, setSheetUrl] = useState('');
+  const [loading,  setLoading]  = useState(false);
+  const [result,   setResult]   = useState<{ total: number; inserted: number; skipped: number; errors: number } | null>(null);
+  const [error,    setError]    = useState('');
+
+  async function handleImport(e: React.FormEvent) {
+    e.preventDefault();
+    if (!sheetUrl.trim()) { setError('Please enter a Google Sheets URL'); return; }
+    setLoading(true); setError(''); setResult(null);
+    try {
+      const res  = await fetch('/api/urls/import-sheet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sheetUrl: sheetUrl.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Import failed');
+      setResult(data);
+      onImported();
+    } catch (err: any) { setError(err.message); }
+    finally { setLoading(false); }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+      <div className="bg-surface rounded-2xl border border-border shadow-xl w-full max-w-lg mx-4 p-6">
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <h2 className="font-semibold text-ink font-display text-lg">Import from Google Sheet</h2>
+            <p className="text-xs text-muted mt-0.5">Sheet must have columns: New URL, Primary Keyword, Secondary Keyword, priority</p>
+          </div>
+          <button onClick={onClose} className="text-muted hover:text-ink transition-colors">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {!result ? (
+          <form onSubmit={handleImport} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-ink-2 mb-1.5">Google Sheets URL</label>
+              <input
+                type="url"
+                value={sheetUrl}
+                onChange={(e) => setSheetUrl(e.target.value)}
+                placeholder="https://docs.google.com/spreadsheets/d/..."
+                className={inputCls}
+                autoFocus
+              />
+              <p className="text-xs text-muted mt-1">The sheet must be publicly accessible (Anyone with link can view).</p>
+            </div>
+            {error && <p className="text-sm text-danger bg-danger-light px-3 py-2 rounded-xl border border-red-200">{error}</p>}
+            <div className="flex gap-3">
+              <button type="submit" disabled={loading}
+                className="flex items-center gap-2 px-5 py-2.5 bg-primary hover:bg-blue-600 text-white text-sm font-semibold rounded-xl transition-colors disabled:opacity-60">
+                {loading ? <><Spinner /> Importing…</> : (
+                  <>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    Import URLs
+                  </>
+                )}
+              </button>
+              <button type="button" onClick={onClose}
+                className="px-5 py-2.5 border border-border text-ink-2 text-sm rounded-xl hover:bg-surface2 transition-colors">
+                Cancel
+              </button>
+            </div>
+          </form>
+        ) : (
+          <div className="space-y-4">
+            <div className="grid grid-cols-4 gap-3">
+              {[
+                { label: 'Total',    value: result.total,    color: 'text-ink' },
+                { label: 'Inserted', value: result.inserted, color: 'text-green-600' },
+                { label: 'Skipped',  value: result.skipped,  color: 'text-yellow-600' },
+                { label: 'Errors',   value: result.errors,   color: 'text-red-600' },
+              ].map(({ label, value, color }) => (
+                <div key={label} className="bg-surface2 rounded-xl p-3 text-center border border-border">
+                  <p className={`text-xl font-bold font-display ${color}`}>{value}</p>
+                  <p className="text-xs text-muted mt-0.5">{label}</p>
+                </div>
+              ))}
+            </div>
+            <p className="text-sm text-ink">
+              {result.inserted > 0
+                ? <><span className="text-green-600 font-semibold">{result.inserted} new URLs</span> added successfully.</>
+                : 'No new URLs were added.'}
+              {result.skipped > 0 && <> {result.skipped} already existed and were skipped.</>}
+            </p>
+            <div className="flex gap-3">
+              <button onClick={onClose}
+                className="px-5 py-2.5 bg-primary hover:bg-blue-600 text-white text-sm font-semibold rounded-xl transition-colors">
+                Done
+              </button>
+              <button onClick={() => setResult(null)}
+                className="px-5 py-2.5 border border-border text-ink-2 text-sm rounded-xl hover:bg-surface2 transition-colors">
+                Import Another
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function URLsPage() {
@@ -268,8 +380,59 @@ export default function URLsPage() {
   const [filterActive,   setFilterActive]   = useState<'all' | 'active' | 'inactive'>('all');
   const [filterPriority, setFilterPriority] = useState<string>('all');
   const [showAdd,        setShowAdd]        = useState(false);
+  const [showImport,     setShowImport]     = useState(false);
   const [editURL,        setEditURL]        = useState<SiteURL | null>(null);
   const [togglingId,     setTogglingId]     = useState<number | null>(null);
+  const [selectedIds,    setSelectedIds]    = useState<Set<number>>(new Set());
+  const [showGroupModal, setShowGroupModal] = useState<'create' | 'add' | null>(null);
+  const [groups,         setGroups]         = useState<URLGroup[]>([]);
+  const [groupSaving,    setGroupSaving]    = useState(false);
+  const [groupName,      setGroupName]      = useState('');
+  const [groupDesc,      setGroupDesc]      = useState('');
+  const [addToGroupId,   setAddToGroupId]   = useState<number | NaN>(NaN);
+
+  async function fetchGroups() {
+    try {
+      const res  = await fetch('/api/url-groups');
+      const data = await res.json();
+      setGroups(data.groups ?? []);
+    } catch {}
+  }
+
+  async function handleCreateGroup() {
+    if (!groupName.trim()) return;
+    setGroupSaving(true);
+    try {
+      await fetch('/api/url-groups', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: groupName, description: groupDesc, urlIds: [...selectedIds] }),
+      });
+      setShowGroupModal(null); setGroupName(''); setGroupDesc(''); setSelectedIds(new Set());
+      fetchGroups();
+    } finally { setGroupSaving(false); }
+  }
+
+  async function handleAddToGroup() {
+    if (!addToGroupId) return;
+    setGroupSaving(true);
+    try {
+      await fetch(`/api/url-groups/${addToGroupId}/members`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ urlIds: [...selectedIds] }),
+      });
+      setShowGroupModal(null); setSelectedIds(new Set());
+    } finally { setGroupSaving(false); }
+  }
+
+  function toggleSelect(id: number) {
+    setSelectedIds((prev) => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
+  }
+  function toggleSelectAll() {
+    if (selectedIds.size === filtered.length) setSelectedIds(new Set());
+    else setSelectedIds(new Set(filtered.map((u) => u.URLID)));
+  }
 
   async function fetchURLs() {
     setLoading(true);
@@ -282,7 +445,7 @@ export default function URLsPage() {
     finally { setLoading(false); }
   }
 
-  useEffect(() => { fetchURLs(); }, []);
+  useEffect(() => { fetchURLs(); fetchGroups(); }, []);
 
   async function handleSetup() {
     setSetupLoading(true);
@@ -351,6 +514,13 @@ export default function URLsPage() {
               Import / Migrate
             </button>
           )}
+          <button onClick={() => setShowImport(true)}
+            className="flex items-center gap-1.5 px-3 py-2 border border-border text-ink-2 text-sm rounded-xl hover:bg-surface2 transition-colors">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+            </svg>
+            Import Sheet
+          </button>
           <button onClick={() => setShowAdd(true)}
             className="flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-blue-600 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
@@ -432,6 +602,32 @@ export default function URLsPage() {
             </span>
           </div>
 
+          {/* Group action toolbar — shown when URLs are selected */}
+          {selectedIds.size > 0 && (
+            <div className="flex items-center gap-3 px-4 py-2.5 bg-primary/5 border border-primary/20 rounded-xl">
+              <span className="text-sm font-semibold text-primary">{selectedIds.size} URL{selectedIds.size > 1 ? 's' : ''} selected</span>
+              <div className="flex gap-2 ml-auto">
+                <button onClick={() => { setShowGroupModal('create'); setGroupName(''); setGroupDesc(''); }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-blue-600 text-white text-xs font-semibold rounded-lg transition-colors">
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                  </svg>
+                  Create New Group
+                </button>
+                {groups.length > 0 && (
+                  <button onClick={() => setShowGroupModal('add')}
+                    className="flex items-center gap-1.5 px-3 py-1.5 border border-border text-ink-2 text-xs font-semibold rounded-lg hover:bg-surface2 transition-colors">
+                    Add to Existing Group
+                  </button>
+                )}
+                <button onClick={() => setSelectedIds(new Set())}
+                  className="px-3 py-1.5 text-muted text-xs hover:text-ink transition-colors">
+                  Clear
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Table */}
           {filtered.length === 0 ? (
             <div className="text-center py-16 text-muted">
@@ -443,6 +639,13 @@ export default function URLsPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-surface2">
+                    <th className="px-4 py-3 w-8">
+                      <input type="checkbox"
+                        checked={selectedIds.size > 0 && selectedIds.size === filtered.length}
+                        onChange={toggleSelectAll}
+                        className="rounded border-border text-primary focus:ring-primary/40 cursor-pointer"
+                      />
+                    </th>
                     <th className="text-left   px-4 py-3 font-semibold text-ink-2 text-xs uppercase tracking-wide">URL</th>
                     <th className="text-left   px-4 py-3 font-semibold text-ink-2 text-xs uppercase tracking-wide hidden md:table-cell">Primary Keyword</th>
                     <th className="text-center px-4 py-3 font-semibold text-ink-2 text-xs uppercase tracking-wide hidden sm:table-cell">Priority</th>
@@ -455,7 +658,11 @@ export default function URLsPage() {
                 </thead>
                 <tbody className="divide-y divide-border">
                   {filtered.map((u) => (
-                    <tr key={u.URLID} className="hover:bg-surface2/50 transition-colors">
+                    <tr key={u.URLID} className={`hover:bg-surface2/50 transition-colors ${selectedIds.has(u.URLID) ? 'bg-primary/5' : ''}`}>
+                      <td className="px-4 py-3 w-8">
+                        <input type="checkbox" checked={selectedIds.has(u.URLID)} onChange={() => toggleSelect(u.URLID)}
+                          className="rounded border-border text-primary focus:ring-primary/40 cursor-pointer" />
+                      </td>
                       <td className="px-4 py-3 max-w-xs">
                         <a href={u.PageURL} target="_blank" rel="noopener noreferrer"
                           className="font-mono text-sm text-primary hover:underline truncate block" title={u.PageURL}>
@@ -533,6 +740,75 @@ export default function URLsPage() {
           setUrls((prev) => prev.map((u) => u.URLID === updated.URLID ? updated : u));
           setEditURL(null);
         }} />
+      )}
+      {showImport && (
+        <ImportSheetModal
+          onClose={() => setShowImport(false)}
+          onImported={() => { fetchURLs(); }}
+        />
+      )}
+
+      {/* Create New Group Modal */}
+      {showGroupModal === 'create' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-surface rounded-2xl border border-border shadow-xl w-full max-w-md mx-4 p-6">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="font-semibold text-ink font-display text-lg">Create Group from {selectedIds.size} URL{selectedIds.size > 1 ? 's' : ''}</h2>
+              <button onClick={() => setShowGroupModal(null)} className="text-muted hover:text-ink">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-ink-2 mb-1.5">Group Name <span className="text-danger">*</span></label>
+                <input type="text" value={groupName} onChange={(e) => setGroupName(e.target.value)} placeholder="e.g. Silver Coins"
+                  className={inputCls} autoFocus />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-ink-2 mb-1.5">Description <span className="text-muted text-xs font-normal">(optional)</span></label>
+                <textarea value={groupDesc} onChange={(e) => setGroupDesc(e.target.value)} rows={2}
+                  placeholder="Short description…" className={`${inputCls} resize-none`} />
+              </div>
+              <div className="flex gap-3">
+                <button onClick={handleCreateGroup} disabled={groupSaving || !groupName.trim()}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-primary hover:bg-blue-600 text-white text-sm font-semibold rounded-xl transition-colors disabled:opacity-60">
+                  {groupSaving ? <><Spinner /> Creating…</> : 'Create Group'}
+                </button>
+                <button onClick={() => setShowGroupModal(null)} className="px-5 py-2.5 border border-border text-ink-2 text-sm rounded-xl hover:bg-surface2">Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add to Existing Group Modal */}
+      {showGroupModal === 'add' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-surface rounded-2xl border border-border shadow-xl w-full max-w-sm mx-4 p-6">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="font-semibold text-ink font-display text-lg">Add {selectedIds.size} URL{selectedIds.size > 1 ? 's' : ''} to Group</h2>
+              <button onClick={() => setShowGroupModal(null)} className="text-muted hover:text-ink">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-ink-2 mb-1.5">Select Group</label>
+                <select value={addToGroupId} onChange={(e) => setAddToGroupId(Number(e.target.value))} className={inputCls}>
+                  <option value="">— Choose a group —</option>
+                  {groups.map((g) => <option key={g.GroupID} value={g.GroupID}>{g.GroupName} ({g.URLCount} URLs)</option>)}
+                </select>
+              </div>
+              <div className="flex gap-3">
+                <button onClick={handleAddToGroup} disabled={groupSaving || !addToGroupId}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-primary hover:bg-blue-600 text-white text-sm font-semibold rounded-xl transition-colors disabled:opacity-60">
+                  {groupSaving ? <><Spinner /> Adding…</> : 'Add to Group'}
+                </button>
+                <button onClick={() => setShowGroupModal(null)} className="px-5 py-2.5 border border-border text-ink-2 text-sm rounded-xl hover:bg-surface2">Cancel</button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

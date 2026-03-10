@@ -280,104 +280,128 @@ function AddEntryForm({ urlId, onSaved, onCancel }: { urlId: number; onSaved: (m
 
 // ── URL Row (collapsible) ─────────────────────────────────────────────────────
 
-function URLRow({ url, onMetricAdded }: { url: SerpURL; onMetricAdded: (urlId: number, m: URLMetric) => void }) {
-  const [expanded, setExpanded] = useState(false);
-  const [showForm, setShowForm] = useState(false);
+const CHART_PRESETS = [
+  { label: '8d',  serpDays: 8,   volMonths: 1  },
+  { label: '1m',  serpDays: 30,  volMonths: 1  },
+  { label: '3m',  serpDays: 90,  volMonths: 3  },
+  { label: 'All', serpDays: null, volMonths: null },
+] as const;
 
-  const trend   = getTrend(url.metrics);
-  const latest  = getLatestSerp(url.metrics);
-  const prev    = getPrevSerp(url.metrics);
-  const latVol  = getLatestVolume(url.metrics);
-  const delta   = latest != null && prev != null ? latest - prev : null;
-  const lastDate = url.metrics.length > 0
-    ? url.metrics.sort((a, b) => b.RecordedDate.localeCompare(a.RecordedDate))[0].RecordedDate
-    : null;
+function toMonthStr(d: Date) { return d.toISOString().slice(0, 7); }
+function monthsAgoStr(n: number) {
+  const d = new Date(); d.setMonth(d.getMonth() - n); return toMonthStr(d);
+}
 
-  // Data table (sorted newest first)
+// ── Chart Popup Modal ─────────────────────────────────────────────────────────
+
+function ChartModal({ url, onClose, onMetricAdded }: {
+  url: SerpURL;
+  onClose: () => void;
+  onMetricAdded: (urlId: number, m: URLMetric) => void;
+}) {
+  const [showForm,  setShowForm]  = useState(false);
+  const [serpFrom, setSerpFrom] = useState(() => daysAgoStr(90));
+  const [serpTo,   setSerpTo]   = useState('');
+  const [volFrom,  setVolFrom]  = useState(() => monthsAgoStr(2));
+  const [volTo,    setVolTo]    = useState('');
+
+  function applyPreset(serpDays: number | null, volMonths: number | null) {
+    if (serpDays === null) {
+      setSerpFrom(''); setSerpTo(''); setVolFrom(''); setVolTo('');
+    } else {
+      setSerpFrom(daysAgoStr(serpDays)); setSerpTo('');
+      setVolFrom(monthsAgoStr((volMonths ?? 1) - 1)); setVolTo('');
+    }
+  }
+
+  const serpMetrics = url.metrics.filter((m) =>
+    (!serpFrom || m.RecordedDate >= serpFrom) && (!serpTo || m.RecordedDate <= serpTo),
+  );
+  const volMetrics = url.metrics.filter((m) => {
+    const mo = m.RecordedDate.slice(0, 7);
+    return (!volFrom || mo >= volFrom) && (!volTo || mo <= volTo);
+  });
   const sortedMetrics = [...url.metrics].sort((a, b) => b.RecordedDate.localeCompare(a.RecordedDate));
 
+  const inpCls = 'px-2 py-1 rounded-lg border border-border bg-surface2 text-xs text-ink focus:outline-none focus:ring-1 focus:ring-primary/40';
+
   return (
-    <div className="border border-border rounded-xl overflow-hidden">
-      {/* Collapsed row */}
-      <div
-        className="flex items-center gap-3 px-4 py-3 bg-surface hover:bg-surface2/50 transition-colors cursor-pointer"
-        onClick={() => setExpanded((e) => !e)}
-      >
-        {/* URL + keyword */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-mono text-sm text-ink truncate">{pathOf(url.PageURL)}</span>
-            <PriorityBadge p={url.Priority} />
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+      <div className="bg-surface rounded-2xl border border-border shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+
+        {/* Modal header */}
+        <div className="flex items-start justify-between p-5 border-b border-border flex-shrink-0">
+          <div className="flex-1 min-w-0 pr-4">
+            <a href={url.PageURL} target="_blank" rel="noopener noreferrer"
+              className="font-mono text-sm text-primary hover:underline block truncate" title={url.PageURL}>
+              {pathOf(url.PageURL)}
+            </a>
+            {url.PrimaryKeyword && <p className="text-xs text-muted mt-0.5">{url.PrimaryKeyword}</p>}
           </div>
-          {url.PrimaryKeyword && (
-            <p className="text-xs text-muted mt-0.5">{url.PrimaryKeyword}</p>
-          )}
+          {/* Quick presets */}
+          <div className="flex items-center gap-1 flex-shrink-0 mr-3">
+            {CHART_PRESETS.map((p) => (
+              <button key={p.label} onClick={() => applyPreset(p.serpDays, p.volMonths)}
+                className="text-xs px-2.5 py-1 rounded-lg border font-medium transition-colors bg-surface2 text-muted border-border hover:text-ink hover:border-primary/40">
+                {p.label}
+              </button>
+            ))}
+          </div>
+          <button onClick={onClose} className="text-muted hover:text-ink flex-shrink-0">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
         </div>
 
-        {/* Sparkline */}
-        <div className="hidden sm:flex items-center">
-          <Sparkline metrics={url.metrics} />
-        </div>
+        {/* Scrollable content */}
+        <div className="flex-1 overflow-y-auto p-5 space-y-5">
 
-        {/* Trend */}
-        <div className="w-24 text-center flex-shrink-0">
-          <TrendBadge trend={trend} delta={delta} />
-        </div>
-
-        {/* Latest SERP */}
-        <div className="w-16 text-center flex-shrink-0">
-          <SerpBadge pos={latest} />
-          {prev != null && delta != null && (
-            <div className={`text-xs mt-0.5 ${delta < 0 ? 'text-green-600' : delta > 0 ? 'text-red-600' : 'text-muted'}`}>
-              {delta < 0 ? `↑ was #${prev}` : delta > 0 ? `↓ was #${prev}` : `= #${prev}`}
-            </div>
-          )}
-        </div>
-
-        {/* Search Volume */}
-        <div className="w-20 text-center flex-shrink-0 font-mono text-sm text-ink hidden md:block">
-          {latVol != null ? latVol.toLocaleString() : <span className="text-muted">—</span>}
-        </div>
-
-        {/* Last date */}
-        <div className="w-20 text-right flex-shrink-0 text-xs text-muted hidden lg:block">
-          {lastDate ?? '—'}
-        </div>
-
-        {/* Count + chevron */}
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <span className="text-xs text-muted bg-surface2 px-1.5 py-0.5 rounded-full">{url.metrics.length}</span>
-          <svg className={`w-4 h-4 text-muted transition-transform ${expanded ? 'rotate-180' : ''}`}
-            fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-          </svg>
-        </div>
-      </div>
-
-      {/* Expanded section */}
-      {expanded && (
-        <div className="border-t border-border bg-surface2/30 p-4 space-y-4">
-
-          {/* Charts */}
+          {/* SERP Position Chart */}
           <div className="space-y-2">
-            <p className="text-xs font-semibold text-ink-2 uppercase tracking-wide">SERP Position Over Time</p>
-            <div className="bg-surface rounded-xl border border-border p-3">
-              <SERPChart metrics={url.metrics} />
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <p className="text-xs font-semibold text-ink-2 uppercase tracking-wide">
+                SERP Position Over Time
+                <span className="ml-2 font-normal text-muted normal-case">
+                  ({serpMetrics.filter((m) => m.SERPPosition != null).length} pts)
+                </span>
+              </p>
+              <div className="flex items-center gap-1.5">
+                <input type="date" value={serpFrom} onChange={(e) => setSerpFrom(e.target.value)} className={inpCls} />
+                <span className="text-xs text-muted">→</span>
+                <input type="date" value={serpTo} onChange={(e) => setSerpTo(e.target.value)} placeholder={todayStr()} className={inpCls} />
+              </div>
+            </div>
+            <div className="bg-canvas rounded-xl border border-border p-3">
+              <SERPChart metrics={serpMetrics} />
             </div>
           </div>
 
+          {/* Search Volume Chart */}
           {url.metrics.some((m) => m.SearchVolume != null) && (
             <div className="space-y-2">
-              <p className="text-xs font-semibold text-ink-2 uppercase tracking-wide">Search Volume Over Time</p>
-              <div className="bg-surface rounded-xl border border-border p-3">
-                <VolumeChart metrics={url.metrics} />
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <p className="text-xs font-semibold text-ink-2 uppercase tracking-wide">
+                  Search Volume Over Time
+                  <span className="ml-2 font-normal text-muted normal-case">
+                    ({volMetrics.filter((m) => m.SearchVolume != null).length} pts)
+                  </span>
+                </p>
+                <div className="flex items-center gap-1.5">
+                  <input type="month" value={volFrom} onChange={(e) => setVolFrom(e.target.value)} className={inpCls} />
+                  <span className="text-xs text-muted">→</span>
+                  <input type="month" value={volTo} onChange={(e) => setVolTo(e.target.value)} className={inpCls} />
+                </div>
+              </div>
+              <div className="bg-canvas rounded-xl border border-border p-3">
+                <VolumeChart metrics={volMetrics} />
               </div>
             </div>
           )}
 
           {/* Data table */}
           {sortedMetrics.length > 0 && (
-            <div className="bg-surface rounded-xl border border-border overflow-hidden">
+            <div className="bg-canvas rounded-xl border border-border overflow-hidden">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-surface2">
@@ -390,7 +414,7 @@ function URLRow({ url, onMetricAdded }: { url: SerpURL; onMetricAdded: (urlId: n
                 </thead>
                 <tbody className="divide-y divide-border">
                   {sortedMetrics.map((m, idx) => {
-                    const nextM = sortedMetrics[idx + 1]; // previous chronologically
+                    const nextM = sortedMetrics[idx + 1];
                     const serpDelta = m.SERPPosition != null && nextM?.SERPPosition != null
                       ? m.SERPPosition - nextM.SERPPosition : null;
                     return (
@@ -423,10 +447,8 @@ function URLRow({ url, onMetricAdded }: { url: SerpURL; onMetricAdded: (urlId: n
               onCancel={() => setShowForm(false)}
             />
           ) : (
-            <button
-              onClick={(e) => { e.stopPropagation(); setShowForm(true); }}
-              className="flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-blue-600 text-white text-sm font-semibold rounded-xl transition-colors"
-            >
+            <button onClick={() => setShowForm(true)}
+              className="flex items-center gap-1.5 px-4 py-2 bg-primary hover:bg-blue-600 text-white text-sm font-semibold rounded-xl transition-colors">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
               </svg>
@@ -434,8 +456,87 @@ function URLRow({ url, onMetricAdded }: { url: SerpURL; onMetricAdded: (urlId: n
             </button>
           )}
         </div>
-      )}
+      </div>
     </div>
+  );
+}
+
+// ── URL Row (compact summary row — click to open chart popup) ─────────────────
+
+function URLRow({ url, onMetricAdded }: { url: SerpURL; onMetricAdded: (urlId: number, m: URLMetric) => void }) {
+  const [showModal, setShowModal] = useState(false);
+
+  const trend    = getTrend(url.metrics);
+  const latest   = getLatestSerp(url.metrics);
+  const prev     = getPrevSerp(url.metrics);
+  const latVol   = getLatestVolume(url.metrics);
+  const delta    = latest != null && prev != null ? latest - prev : null;
+  const lastDate = url.metrics.length > 0
+    ? [...url.metrics].sort((a, b) => b.RecordedDate.localeCompare(a.RecordedDate))[0].RecordedDate
+    : null;
+
+  return (
+    <>
+      <div
+        className="flex items-center gap-3 px-4 py-3 bg-surface hover:bg-surface2/50 transition-colors cursor-pointer border border-border rounded-xl"
+        onClick={() => setShowModal(true)}
+      >
+        {/* URL + keyword */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-mono text-sm text-ink truncate">{pathOf(url.PageURL)}</span>
+            <PriorityBadge p={url.Priority} />
+          </div>
+          {url.PrimaryKeyword && <p className="text-xs text-muted mt-0.5">{url.PrimaryKeyword}</p>}
+        </div>
+
+        {/* Sparkline */}
+        <div className="hidden sm:flex items-center">
+          <Sparkline metrics={url.metrics} />
+        </div>
+
+        {/* Trend */}
+        <div className="w-24 text-center flex-shrink-0">
+          <TrendBadge trend={trend} delta={delta} />
+        </div>
+
+        {/* Latest SERP */}
+        <div className="w-16 text-center flex-shrink-0">
+          <SerpBadge pos={latest} />
+          {prev != null && delta != null && (
+            <div className={`text-xs mt-0.5 ${delta < 0 ? 'text-green-600' : delta > 0 ? 'text-red-600' : 'text-muted'}`}>
+              {delta < 0 ? `↑ was #${prev}` : delta > 0 ? `↓ was #${prev}` : `= #${prev}`}
+            </div>
+          )}
+        </div>
+
+        {/* Search Volume */}
+        <div className="w-20 text-center flex-shrink-0 font-mono text-sm text-ink hidden md:block">
+          {latVol != null ? latVol.toLocaleString() : <span className="text-muted">—</span>}
+        </div>
+
+        {/* Last date */}
+        <div className="w-20 text-right flex-shrink-0 text-xs text-muted hidden lg:block">
+          {lastDate ?? '—'}
+        </div>
+
+        {/* Count + open icon */}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <span className="text-xs text-muted bg-surface2 px-1.5 py-0.5 rounded-full">{url.metrics.length}</span>
+          <svg className="w-4 h-4 text-muted" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+          </svg>
+        </div>
+      </div>
+
+      {showModal && (
+        <ChartModal
+          url={url}
+          onClose={() => setShowModal(false)}
+          onMetricAdded={(uid, m) => { onMetricAdded(uid, m); }}
+        />
+      )}
+    </>
   );
 }
 
@@ -449,8 +550,27 @@ export default function SERPTrackerPage() {
   const [dateFrom,      setDateFrom]      = useState(daysAgoStr(90));
   const [dateTo,        setDateTo]        = useState(todayStr());
   const [filterPriority,setFilterPriority]= useState('all');
+  const [filterGroup,   setFilterGroup]   = useState(() => searchParams.get('group') ?? '');
   const [search,        setSearch]        = useState(() => searchParams.get('q') ?? '');
   const [onlyWithData,  setOnlyWithData]  = useState(() => !searchParams.get('q'));
+  const [groups,        setGroups]        = useState<Array<{GroupID:number;GroupName:string;memberIds:number[]}>>([]);
+
+  useEffect(() => {
+    fetch('/api/url-groups')
+      .then((r) => r.json())
+      .then(async (d) => {
+        if (!d.groups) return;
+        const details = await Promise.all(
+          d.groups.map((g: any) =>
+            fetch(`/api/url-groups/${g.GroupID}`).then((r) => r.json()).then((x) => ({
+              GroupID: g.GroupID, GroupName: g.GroupName,
+              memberIds: (x.group?.members ?? []).map((m: any) => m.URLID),
+            })),
+          ),
+        );
+        setGroups(details);
+      });
+  }, []);
 
   async function fetchData() {
     setLoading(true);
@@ -486,14 +606,19 @@ export default function SERPTrackerPage() {
 
   // Filtered list
   const filtered = useMemo(() => {
-    if (!search) return urls;
+    let list = urls;
+    if (filterGroup) {
+      const g = groups.find((x) => x.GroupID === Number(filterGroup));
+      if (g) list = list.filter((u) => g.memberIds.includes(u.URLID));
+    }
+    if (!search) return list;
     const q = search.toLowerCase();
-    return urls.filter((u) =>
+    return list.filter((u) =>
       u.PageURL.toLowerCase().includes(q) ||
       (u.PrimaryKeyword ?? '').toLowerCase().includes(q) ||
       (u.SecondaryKeywords ?? '').toLowerCase().includes(q)
     );
-  }, [urls, search]);
+  }, [urls, search, filterGroup, groups]);
 
   // Summary stats
   const stats = useMemo(() => {
@@ -567,6 +692,19 @@ export default function SERPTrackerPage() {
                 ))}
               </div>
 
+              {/* Group filter */}
+              {groups.length > 0 && (
+                <div className="pb-0.5">
+                  <select value={filterGroup} onChange={(e) => setFilterGroup(e.target.value)}
+                    className="text-xs px-3 py-1.5 rounded-xl border border-border bg-surface2 text-ink focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition">
+                    <option value="">All Groups</option>
+                    {groups.map((g) => (
+                      <option key={g.GroupID} value={g.GroupID}>{g.GroupName}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               {/* Only with data toggle */}
               <label className="flex items-center gap-2 cursor-pointer pb-0.5 ml-auto">
                 <div className="relative">
@@ -625,7 +763,7 @@ export default function SERPTrackerPage() {
               {/* Column headers */}
               <div className="hidden sm:flex items-center gap-3 px-4 pb-1 text-xs font-semibold text-muted uppercase tracking-wide">
                 <div className="flex-1">URL / Keyword</div>
-                <div className="w-20 text-center hidden sm:block">Trend</div>
+                <div className="w-20 text-center hidden sm:block">Chart</div>
                 <div className="w-24 text-center">Trend</div>
                 <div className="w-16 text-center">SERP</div>
                 <div className="w-20 text-center hidden md:block">Volume</div>
