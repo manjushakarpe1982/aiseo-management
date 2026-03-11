@@ -883,13 +883,6 @@ def _build_content_prompt(prompt_row, page: dict,
     keyword_data: keyword extraction result from Phase 4a (may be None).
     Falls back gracefully if keyword_data is None.
     """
-    # SchemaMarkup is truncated to 2000 chars — the full product list (can be 10k+ chars)
-    # balloons input AND output tokens with minimal SEO value.  Claude only needs
-    # enough to identify schema type and missing fields; it must NOT reproduce the
-    # full schema in suggested_content (prompt instructs key changes only).
-    raw_schema = page["SchemaMarkup"] or ""
-    schema_preview = (raw_schema[:2000] + " ...[truncated]") if len(raw_schema) > 2000 else raw_schema
-
     page_data = {
         "url":             page["PageURL"],
         "MetaTitle":       page["MetaTitle"],
@@ -900,7 +893,7 @@ def _build_content_prompt(prompt_row, page: dict,
         "BodyContent":     (page["BodyContent"] or "")[:15000],  # full editorial content for deep analysis
         "WordCount":       page["WordCount"],
         "CanonicalURL":    page["CanonicalURL"],
-        "SchemaMarkup":    schema_preview,
+        # SchemaMarkup intentionally excluded — handled by a dedicated schema prompt
     }
 
     kw = keyword_data or {}
