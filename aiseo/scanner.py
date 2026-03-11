@@ -140,6 +140,12 @@ def _call_claude(system_prompt: str, user_message: str, max_tokens: int = 8192) 
             out_tok     = getattr(usage, "output_tokens",                 0) or 0
             cache_write = getattr(usage, "cache_creation_input_tokens",   0) or 0
             cache_read  = getattr(usage, "cache_read_input_tokens",       0) or 0
+            stop_reason = getattr(response, "stop_reason", None)
+            if stop_reason == "max_tokens":
+                print(
+                    f"    WARNING: Claude response hit max_tokens limit ({max_tokens}) "
+                    f"— output was truncated. Consider increasing max_tokens."
+                )
             return response.content[0].text, in_tok, out_tok, cache_write, cache_read
         except Exception as exc:
             if "rate_limit" in str(exc).lower() and attempt < 2:
@@ -355,7 +361,9 @@ def _call_claude_logged(conn, scan_id: int, call_type: str, entity_url: str,
             f"  cache_read={cache_read:,}"   if cache_read  else
             ""
         )
-        print(f"    [{provider}] tokens in={in_tok:,}  out={out_tok:,}{cache_label}  cost=${cost:.5f}")
+        truncated = provider == "claude" and out_tok >= max_tokens
+        trunc_label = "  ⚠ TRUNCATED" if truncated else ""
+        print(f"    [{provider}] tokens in={in_tok:,}  out={out_tok:,}{cache_label}  cost=${cost:.5f}{trunc_label}")
         return raw
     except Exception as exc:
         error_msg = str(exc)[:2000]
