@@ -261,7 +261,7 @@ function EditURLModal({ url, onClose, onSaved }: { url: SiteURL; onClose: () => 
 function ImportSheetModal({ onClose, onImported }: { onClose: () => void; onImported: () => void }) {
   const [sheetUrl, setSheetUrl] = useState('');
   const [loading,  setLoading]  = useState(false);
-  const [result,   setResult]   = useState<{ total: number; inserted: number; skipped: number; errors: number } | null>(null);
+  const [result,   setResult]   = useState<{ total: number; inserted: number; skipped: number; errors: number; errorDetails?: string[] } | null>(null);
   const [error,    setError]    = useState('');
 
   async function handleImport(e: React.FormEvent) {
@@ -276,8 +276,10 @@ function ImportSheetModal({ onClose, onImported }: { onClose: () => void; onImpo
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Import failed');
+      // Don't call onImported() yet — calling it here would trigger fetchURLs()
+      // which sets loading=true in the parent and unmounts this modal before
+      // the success panel can render.  We call it from Done instead.
       setResult(data);
-      onImported();
     } catch (err: any) { setError(err.message); }
     finally { setLoading(false); }
   }
@@ -350,13 +352,21 @@ function ImportSheetModal({ onClose, onImported }: { onClose: () => void; onImpo
                 ? <><span className="text-green-600 font-semibold">{result.inserted} new URLs</span> added successfully.</>
                 : 'No new URLs were added.'}
               {result.skipped > 0 && <> {result.skipped} already existed and were skipped.</>}
+              {result.errors > 0 && <> <span className="text-red-600 font-semibold">{result.errors} errors</span> (see below).</>}
             </p>
+            {result.errorDetails && result.errorDetails.length > 0 && (
+              <div className="bg-red-50 border border-red-200 rounded-xl p-3 space-y-1 max-h-32 overflow-y-auto">
+                {result.errorDetails.map((e, i) => (
+                  <p key={i} className="text-xs text-red-700 font-mono">{e}</p>
+                ))}
+              </div>
+            )}
             <div className="flex gap-3">
-              <button onClick={onClose}
+              <button onClick={() => { onImported(); onClose(); }}
                 className="px-5 py-2.5 bg-primary hover:bg-blue-600 text-white text-sm font-semibold rounded-xl transition-colors">
                 Done
               </button>
-              <button onClick={() => setResult(null)}
+              <button onClick={() => { setResult(null); setSheetUrl(''); }}
                 className="px-5 py-2.5 border border-border text-ink-2 text-sm rounded-xl hover:bg-surface2 transition-colors">
                 Import Another
               </button>
@@ -434,15 +444,15 @@ export default function URLsPage() {
     else setSelectedIds(new Set(filtered.map((u) => u.URLID)));
   }
 
-  async function fetchURLs() {
-    setLoading(true);
+  async function fetchURLs(silent = false) {
+    if (!silent) setLoading(true);
     try {
       const res  = await fetch('/api/urls');
       const data = await res.json();
       if (data.needsSetup) { setNeedsSetup(true); }
       else { setUrls(data.urls ?? []); setNeedsSetup(false); }
     } catch (err) { console.error(err); }
-    finally { setLoading(false); }
+    finally { if (!silent) setLoading(false); }
   }
 
   useEffect(() => { fetchURLs(); fetchGroups(); }, []);
@@ -744,7 +754,7 @@ export default function URLsPage() {
       {showImport && (
         <ImportSheetModal
           onClose={() => setShowImport(false)}
-          onImported={() => { fetchURLs(); }}
+          onImported={() => { fetchURLs(true); }}
         />
       )}
 
