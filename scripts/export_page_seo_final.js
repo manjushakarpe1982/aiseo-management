@@ -4,19 +4,34 @@
  * All lookup is URL-driven — no hardcoded DB row IDs needed.
  * Add any BPM page URL to the PAGES array below.
  *
- * Usage: node scripts/export_page_seo_final.js
+ * Usage:
+ *   node scripts/export_page_seo_final.js           → staging DB
+ *   node scripts/export_page_seo_final.js --prod    → production DB
  */
 
 const sql    = require('mssql');
 const ExcelJS = require('exceljs');
 const path   = require('path');
 
-const config = {
-  server: '106.201.231.27', port: 58815, database: 'BPMStagging',
-  user: 'sa', password: 'ash@2011',
-  options: { encrypt: false, trustServerCertificate: true },
-  requestTimeout: 30000,
+const isProd = process.argv.includes('--prod');
+
+const DB_CONFIGS = {
+  staging: {
+    server: '106.201.231.27', port: 58815, database: 'BPMStagging',
+    user: 'sa', password: 'ash@2011',
+    options: { encrypt: false, trustServerCertificate: true },
+    requestTimeout: 30000,
+  },
+  prod: {
+    server: '69.197.165.70', port: 41656, database: 'BPMProd',
+    user: 'sa', password: 'B0L%Deer@2022$',
+    options: { encrypt: false, trustServerCertificate: true },
+    requestTimeout: 30000,
+  },
 };
+
+const config = isProd ? DB_CONFIGS.prod : DB_CONFIGS.staging;
+console.log(`Using ${isProd ? 'PRODUCTION (BPMProd)' : 'STAGING (BPMStagging)'} database\n`);
 
 const YEAR = new Date().getFullYear();
 
@@ -272,7 +287,7 @@ function fillTemplate(tpl, p) {
 
   ws.autoFilter = { from: 'A1', to: `${String.fromCharCode(64 + ws.columns.length)}1` };
 
-  const outPath = path.join('C:\\Users\\newsa\\Desktop', 'BPM_SEO_Pages.xlsx');
+  const outPath = path.join('C:\\Users\\newsa\\Desktop', isProd ? 'BPM_SEO_Pages_PROD.xlsx' : 'BPM_SEO_Pages.xlsx');
   await wb.xlsx.writeFile(outPath);
   console.log('Saved:', outPath);
   console.log('Done!');
