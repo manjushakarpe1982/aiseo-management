@@ -399,7 +399,7 @@ export default function URLsPage() {
   const [loading,        setLoading]        = useState(true);
   const [needsSetup,     setNeedsSetup]     = useState(false);
   const [setupLoading,   setSetupLoading]   = useState(false);
-  const [setupResult,    setSetupResult]    = useState<{ importedCount: number; totalURLs: number } | null>(null);
+  const [setupResult,    setSetupResult]    = useState<{ totalURLs: number } | null>(null);
   const [search,         setSearch]         = useState('');
   const [filterActive,   setFilterActive]   = useState<'all' | 'active' | 'inactive'>('all');
   const [filterPriority, setFilterPriority] = useState<string>('all');
@@ -414,6 +414,8 @@ export default function URLsPage() {
   const [groupName,      setGroupName]      = useState('');
   const [groupDesc,      setGroupDesc]      = useState('');
   const [addToGroupId,   setAddToGroupId]   = useState<number>(NaN);
+  const [pageSize,       setPageSize]       = useState(50);
+  const [currentPage,    setCurrentPage]    = useState(1);
 
   async function fetchGroups() {
     try {
@@ -454,8 +456,14 @@ export default function URLsPage() {
     setSelectedIds((prev) => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s; });
   }
   function toggleSelectAll() {
-    if (selectedIds.size === filtered.length) setSelectedIds(new Set());
-    else setSelectedIds(new Set(filtered.map((u) => u.URLID)));
+    const pageIds = paginated.map((u) => u.URLID);
+    const allSelected = pageIds.every((id) => selectedIds.has(id));
+    setSelectedIds((prev) => {
+      const s = new Set(prev);
+      if (allSelected) pageIds.forEach((id) => s.delete(id));
+      else pageIds.forEach((id) => s.add(id));
+      return s;
+    });
   }
 
   async function fetchURLs(silent = false) {
@@ -477,7 +485,7 @@ export default function URLsPage() {
       const res  = await fetch('/api/urls/setup', { method: 'POST' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Setup failed');
-      setSetupResult({ importedCount: data.importedCount, totalURLs: data.totalURLs });
+      setSetupResult({ totalURLs: data.totalURLs });
       await fetchURLs();
     } catch (err: any) { alert(err.message); }
     finally { setSetupLoading(false); }
@@ -509,6 +517,16 @@ export default function URLsPage() {
     }
     return true;
   }), [urls, search, filterActive, filterPriority]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const safePage   = Math.min(currentPage, totalPages);
+  const paginated  = useMemo(
+    () => filtered.slice((safePage - 1) * pageSize, safePage * pageSize),
+    [filtered, safePage, pageSize],
+  );
+
+  // Reset to page 1 whenever filters/search change
+  useEffect(() => { setCurrentPage(1); }, [search, filterActive, filterPriority, pageSize]);
 
   const activeCount   = urls.filter((u) =>  u.IsActive).length;
   const inactiveCount = urls.filter((u) => !u.IsActive).length;
@@ -580,8 +598,7 @@ export default function URLsPage() {
           </svg>
           <p className="text-sm text-green-800">
             <span className="font-semibold">Setup complete!</span>{' '}
-            {setupResult.importedCount > 0 ? `Imported ${setupResult.importedCount} URLs. ` : ''}
-            Total: {setupResult.totalURLs} URLs.
+            Tables and columns are ready. {setupResult.totalURLs} URLs in registry.
           </p>
           <button onClick={() => setSetupResult(null)} className="ml-auto text-green-600 hover:text-green-800">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -621,9 +638,22 @@ export default function URLsPage() {
                 </button>
               ))}
             </div>
-            <span className="text-sm text-muted ml-auto">
-              {filtered.length !== urls.length ? `Showing ${filtered.length} of ${urls.length}` : `${urls.length} URLs`}
-            </span>
+            <div className="flex items-center gap-3 ml-auto">
+              <span className="text-sm text-muted">
+                {filtered.length !== urls.length
+                  ? `${filtered.length} of ${urls.length} URLs`
+                  : `${urls.length} URLs`}
+              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-muted">Per page:</span>
+                <select value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))}
+                  className="text-xs border border-border rounded-lg px-2 py-1 bg-surface text-ink focus:outline-none focus:ring-2 focus:ring-primary/30 cursor-pointer">
+                  {[25, 50, 100, 250].map((n) => (
+                    <option key={n} value={n}>{n}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
           </div>
 
           {/* Group action toolbar — shown when URLs are selected */}
@@ -665,7 +695,7 @@ export default function URLsPage() {
                   <tr className="border-b border-border bg-surface2">
                     <th className="px-4 py-3 w-8">
                       <input type="checkbox"
-                        checked={selectedIds.size > 0 && selectedIds.size === filtered.length}
+                        checked={paginated.length > 0 && paginated.every((u) => selectedIds.has(u.URLID))}
                         onChange={toggleSelectAll}
                         className="rounded border-border text-primary focus:ring-primary/40 cursor-pointer"
                       />
@@ -681,7 +711,7 @@ export default function URLsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {filtered.map((u) => (
+                  {paginated.map((u) => (
                     <tr key={u.URLID} className={`hover:bg-surface2/50 transition-colors ${selectedIds.has(u.URLID) ? 'bg-primary/5' : ''}`}>
                       <td className="px-4 py-3 w-8">
                         <input type="checkbox" checked={selectedIds.has(u.URLID)} onChange={() => toggleSelect(u.URLID)}
@@ -748,6 +778,49 @@ export default function URLsPage() {
                   ))}
                 </tbody>
               </table>
+              {/* Pagination controls */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between px-4 py-3 border-t border-border bg-surface2">
+                  <span className="text-xs text-muted">
+                    Showing {(safePage - 1) * pageSize + 1}–{Math.min(safePage * pageSize, filtered.length)} of {filtered.length}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => setCurrentPage(1)} disabled={safePage === 1}
+                      className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:text-ink hover:bg-surface disabled:opacity-30 transition-colors" title="First page">
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M11 19l-7-7 7-7M18 19l-7-7 7-7" /></svg>
+                    </button>
+                    <button onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} disabled={safePage === 1}
+                      className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:text-ink hover:bg-surface disabled:opacity-30 transition-colors" title="Previous page">
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
+                    </button>
+                    {/* Page number buttons — show up to 5 around current */}
+                    {Array.from({ length: totalPages }, (_, i) => i + 1)
+                      .filter((p) => p === 1 || p === totalPages || Math.abs(p - safePage) <= 2)
+                      .reduce<(number | '…')[]>((acc, p, i, arr) => {
+                        if (i > 0 && (p as number) - (arr[i - 1] as number) > 1) acc.push('…');
+                        acc.push(p);
+                        return acc;
+                      }, [])
+                      .map((p, i) =>
+                        p === '…'
+                          ? <span key={`ellipsis-${i}`} className="w-7 h-7 flex items-center justify-center text-xs text-muted">…</span>
+                          : <button key={p} onClick={() => setCurrentPage(p as number)}
+                              className={`w-7 h-7 flex items-center justify-center rounded-lg text-xs font-medium transition-colors
+                                ${safePage === p ? 'bg-primary text-white' : 'text-muted hover:text-ink hover:bg-surface'}`}>
+                              {p}
+                            </button>
+                      )}
+                    <button onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))} disabled={safePage === totalPages}
+                      className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:text-ink hover:bg-surface disabled:opacity-30 transition-colors" title="Next page">
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+                    </button>
+                    <button onClick={() => setCurrentPage(totalPages)} disabled={safePage === totalPages}
+                      className="w-7 h-7 flex items-center justify-center rounded-lg text-muted hover:text-ink hover:bg-surface disabled:opacity-30 transition-colors" title="Last page">
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M13 5l7 7-7 7M6 5l7 7-7 7" /></svg>
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </>

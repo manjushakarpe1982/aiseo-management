@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getDb, sql } from '@/lib/db';
+import { getDb } from '@/lib/db';
 import { getSessionUser } from '@/lib/session';
 
 /**
@@ -160,42 +160,13 @@ export async function POST(req: NextRequest) {
       END
     `);
 
-    // ── 5. Import from legacy AISEO_PageSEOInputs ─────────────────────────
-    let importedCount = 0;
-    const tableCheck = await db.request().query(`
-      SELECT COUNT(1) AS cnt
-      FROM INFORMATION_SCHEMA.TABLES
-      WHERE TABLE_NAME = 'AISEO_PageSEOInputs'
-    `);
-
-    if (tableCheck.recordset[0].cnt > 0) {
-      const importResult = await db.request()
-        .input('userId', sql.Int, session.userId)
-        .query(`
-          INSERT INTO ClCode_URLs (PageURL, CreatedAt, CreatedByUserID)
-          SELECT DISTINCT
-            RTRIM(LTRIM(Url)),
-            GETUTCDATE(),
-            @userId
-          FROM AISEO_PageSEOInputs
-          WHERE Url IS NOT NULL
-            AND LTRIM(RTRIM(Url)) <> ''
-            AND NOT EXISTS (
-              SELECT 1 FROM ClCode_URLs u
-              WHERE u.PageURL = RTRIM(LTRIM(AISEO_PageSEOInputs.Url))
-            )
-        `);
-      importedCount = importResult.rowsAffected[0];
-    }
-
-    // ── 6. Return summary ──────────────────────────────────────────────────
+    // ── 5. Return summary ──────────────────────────────────────────────────
     const totalResult = await db.request().query(
       `SELECT COUNT(1) AS total FROM ClCode_URLs`
     );
 
     return NextResponse.json({
       success: true,
-      importedCount,
       totalURLs: totalResult.recordset[0].total,
     });
   } catch (err) {
