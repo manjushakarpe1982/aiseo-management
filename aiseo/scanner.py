@@ -143,8 +143,8 @@ def _call_claude(system_prompt: str, user_message: str, max_tokens: int = 8192) 
             stop_reason = getattr(response, "stop_reason", None)
             if stop_reason == "max_tokens":
                 print(
-                    f"    WARNING: Claude response hit max_tokens limit ({max_tokens}) "
-                    f"— output was truncated. Consider increasing max_tokens."
+                    f"    WARNING: Claude response hit max_tokens limit ({max_tokens})"
+                    f" -- output was truncated. Consider increasing max_tokens."
                 )
             return response.content[0].text, in_tok, out_tok, cache_write, cache_read
         except Exception as exc:
@@ -362,7 +362,7 @@ def _call_claude_logged(conn, scan_id: int, call_type: str, entity_url: str,
             ""
         )
         truncated = provider == "claude" and out_tok >= max_tokens
-        trunc_label = "  ⚠ TRUNCATED" if truncated else ""
+        trunc_label = "  [TRUNCATED]" if truncated else ""
         print(f"    [{provider}] tokens in={in_tok:,}  out={out_tok:,}{cache_label}  cost=${cost:.5f}{trunc_label}")
         return raw
     except Exception as exc:
@@ -883,6 +883,13 @@ def _build_content_prompt(prompt_row, page: dict,
     keyword_data: keyword extraction result from Phase 4a (may be None).
     Falls back gracefully if keyword_data is None.
     """
+    # SchemaMarkup is truncated to 2000 chars — the full product list (can be 10k+ chars)
+    # balloons input AND output tokens with minimal SEO value.  Claude only needs
+    # enough to identify schema type and missing fields; it must NOT reproduce the
+    # full schema in suggested_content (prompt instructs key changes only).
+    raw_schema = page["SchemaMarkup"] or ""
+    schema_preview = (raw_schema[:2000] + " ...[truncated]") if len(raw_schema) > 2000 else raw_schema
+
     page_data = {
         "url":             page["PageURL"],
         "MetaTitle":       page["MetaTitle"],
@@ -893,7 +900,7 @@ def _build_content_prompt(prompt_row, page: dict,
         "BodyContent":     (page["BodyContent"] or "")[:15000],  # full editorial content for deep analysis
         "WordCount":       page["WordCount"],
         "CanonicalURL":    page["CanonicalURL"],
-        "SchemaMarkup":    page["SchemaMarkup"],
+        "SchemaMarkup":    schema_preview,
     }
 
     kw = keyword_data or {}
