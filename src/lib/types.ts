@@ -168,6 +168,13 @@ export interface SiteURL {
   LastScannedAt: string | null;
   CreatedAt: string | null;
   UpdatedAt: string | null;
+  // SEO fields — populated from BPM DB via Search_GetPageSEOData SP on import
+  MetaDescription: string | null;
+  H1: string | null;
+  FirstParagraph: string | null;  // plain-text first <p> of the page content
+  CanonicalUrl: string | null;
+  SEOSource: 'SP' | 'SP+crawl' | 'tag' | 'unknown' | 'error' | null; // where the data came from
+  SEOFetchedAt: string | null;
   // Latest metric fields (joined from ClCode_URLMetrics)
   LatestSERPPosition: number | null;
   LatestSearchVolume: number | null;

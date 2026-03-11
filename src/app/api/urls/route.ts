@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, sql } from '@/lib/db';
 import { getSessionUser } from '@/lib/session';
+import { loadFilterPagesMap, lookupSeoData } from '@/lib/seo-lookup';
 
 /**
  * GET /api/urls  — list all URLs with scan stats + latest SERP/volume
@@ -112,7 +113,46 @@ export async function POST(req: NextRequest) {
           (@pageURL, @pageTitle, @notes, @primaryKeyword, @secondaryKeywords, @priority, GETUTCDATE(), @userId)
       `);
 
-    return NextResponse.json({ url: result.recordset[0] }, { status: 201 });
+    const inserted = result.recordset[0];
+
+    // ── SEO lookup — populate MetaDescription, H1, FirstParagraph etc. from DB ──
+    try {
+      const fpMap = await loadFilterPagesMap(db);
+      const seo   = await lookupSeoData(db, cleanURL, fpMap);
+
+      await db.request()
+        .input('pageURL',      sql.NVarChar(2048),    cleanURL)
+        .input('metaTitle',    sql.NVarChar(512),     seo.metaTitle        || null)
+        .input('metaDesc',     sql.NVarChar(2000),    seo.metaDescription  || null)
+        .input('h1',           sql.NVarChar(512),     seo.h1               || null)
+        .input('firstPara',    sql.NVarChar(sql.MAX), seo.firstParagraph   || null)
+        .input('canonicalUrl', sql.NVarChar(2048),    seo.canonicalUrl     || null)
+        .input('seoSource',    sql.NVarChar(50),      seo.source           || null)
+        .query(`
+          UPDATE ClCode_URLs SET
+            PageTitle       = CASE WHEN @metaTitle IS NOT NULL AND @metaTitle <> '' THEN @metaTitle ELSE PageTitle END,
+            MetaDescription = @metaDesc,
+            H1              = @h1,
+            FirstParagraph  = @firstPara,
+            CanonicalUrl    = @canonicalUrl,
+            SEOSource       = @seoSource,
+            SEOFetchedAt    = GETUTCDATE()
+          WHERE PageURL = @pageURL
+        `);
+
+      // Return the row with SEO fields merged in
+      inserted.MetaDescription = seo.metaDescription || null;
+      inserted.H1              = seo.h1              || null;
+      inserted.FirstParagraph  = seo.firstParagraph  || null;
+      inserted.CanonicalUrl    = seo.canonicalUrl    || null;
+      inserted.SEOSource       = seo.source          || null;
+      if (seo.metaTitle) inserted.PageTitle = seo.metaTitle;
+    } catch (seoErr: any) {
+      // Non-fatal — URL is already saved, SEO fields just stay null for now
+      console.warn(`[POST /api/urls] SEO lookup failed for ${cleanURL}: ${seoErr.message}`);
+    }
+
+    return NextResponse.json({ url: inserted }, { status: 201 });
   } catch (err: any) {
     if (err?.message?.includes('UQ_ClCode_URLs_PageURL') || err?.number === 2627 || err?.number === 2601) {
       return NextResponse.json({ error: 'This URL already exists' }, { status: 409 });

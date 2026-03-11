@@ -261,7 +261,7 @@ function EditURLModal({ url, onClose, onSaved }: { url: SiteURL; onClose: () => 
 function ImportSheetModal({ onClose, onImported }: { onClose: () => void; onImported: () => void }) {
   const [sheetUrl, setSheetUrl] = useState('');
   const [loading,  setLoading]  = useState(false);
-  const [result,   setResult]   = useState<{ total: number; inserted: number; skipped: number; errors: number; errorDetails?: string[] } | null>(null);
+  const [result,   setResult]   = useState<{ total: number; inserted: number; skipped: number; errors: number; seoFetched?: number; seoMissed?: number; errorDetails?: string[] } | null>(null);
   const [error,    setError]    = useState('');
 
   async function handleImport(e: React.FormEvent) {
@@ -347,12 +347,26 @@ function ImportSheetModal({ onClose, onImported }: { onClose: () => void; onImpo
                 </div>
               ))}
             </div>
+            {result.inserted > 0 && (result.seoFetched !== undefined || result.seoMissed !== undefined) && (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-center">
+                  <p className="text-xl font-bold font-display text-blue-600">{result.seoFetched ?? 0}</p>
+                  <p className="text-xs text-blue-500 mt-0.5">SEO data fetched</p>
+                </div>
+                <div className="bg-surface2 border border-border rounded-xl p-3 text-center">
+                  <p className="text-xl font-bold font-display text-muted">{result.seoMissed ?? 0}</p>
+                  <p className="text-xs text-muted mt-0.5">SEO not found</p>
+                </div>
+              </div>
+            )}
             <p className="text-sm text-ink">
               {result.inserted > 0
                 ? <><span className="text-green-600 font-semibold">{result.inserted} new URLs</span> added successfully.</>
                 : 'No new URLs were added.'}
               {result.skipped > 0 && <> {result.skipped} already existed and were skipped.</>}
               {result.errors > 0 && <> <span className="text-red-600 font-semibold">{result.errors} errors</span> (see below).</>}
+              {result.inserted > 0 && (result.seoFetched ?? 0) > 0 && <> SEO fields populated for <span className="text-blue-600 font-semibold">{result.seoFetched}</span> URL{result.seoFetched === 1 ? '' : 's'} from DB.</>}
+              {result.inserted > 0 && (result.seoMissed ?? 0) > 0 && <> <span className="text-muted">{result.seoMissed}</span> URL{result.seoMissed === 1 ? '' : 's'} had no SEO data in DB.</>}
             </p>
             {result.errorDetails && result.errorDetails.length > 0 && (
               <div className="bg-red-50 border border-red-200 rounded-xl p-3 space-y-1 max-h-32 overflow-y-auto">

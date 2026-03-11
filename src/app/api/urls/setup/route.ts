@@ -74,6 +74,55 @@ export async function POST(req: NextRequest) {
         ALTER TABLE ClCode_URLs ADD Priority NVARCHAR(20) NULL;
     `);
 
+    // ── SEO fields (populated from DB via Search_GetPageSEOData SP) ────────
+    await db.request().query(`
+      IF NOT EXISTS (
+        SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_NAME = 'ClCode_URLs' AND COLUMN_NAME = 'MetaDescription'
+      )
+        ALTER TABLE ClCode_URLs ADD MetaDescription NVARCHAR(2000) NULL;
+    `);
+
+    await db.request().query(`
+      IF NOT EXISTS (
+        SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_NAME = 'ClCode_URLs' AND COLUMN_NAME = 'H1'
+      )
+        ALTER TABLE ClCode_URLs ADD H1 NVARCHAR(512) NULL;
+    `);
+
+    await db.request().query(`
+      IF NOT EXISTS (
+        SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_NAME = 'ClCode_URLs' AND COLUMN_NAME = 'FirstParagraph'
+      )
+        ALTER TABLE ClCode_URLs ADD FirstParagraph NVARCHAR(MAX) NULL;
+    `);
+
+    await db.request().query(`
+      IF NOT EXISTS (
+        SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_NAME = 'ClCode_URLs' AND COLUMN_NAME = 'CanonicalUrl'
+      )
+        ALTER TABLE ClCode_URLs ADD CanonicalUrl NVARCHAR(2048) NULL;
+    `);
+
+    await db.request().query(`
+      IF NOT EXISTS (
+        SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_NAME = 'ClCode_URLs' AND COLUMN_NAME = 'SEOSource'
+      )
+        ALTER TABLE ClCode_URLs ADD SEOSource NVARCHAR(50) NULL;
+    `);
+
+    await db.request().query(`
+      IF NOT EXISTS (
+        SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_NAME = 'ClCode_URLs' AND COLUMN_NAME = 'SEOFetchedAt'
+      )
+        ALTER TABLE ClCode_URLs ADD SEOFetchedAt DATETIME2 NULL;
+    `);
+
     // ── 3. Create ClCode_ScanURLs (junction) ───────────────────────────────
     await db.request().query(`
       IF NOT EXISTS (

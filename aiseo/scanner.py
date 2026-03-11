@@ -13,6 +13,7 @@ Full pipeline:
 
 from __future__ import annotations
 
+import html as html_lib
 import json
 import re
 import time
@@ -426,6 +427,254 @@ def _get_tree_cluster(url: str) -> str:
     return "root"
 
 
+# ── BPM URL routing constants ──────────────────────────────────────────────
+
+_METAL_SLUGS: list[tuple[str, str]] = [
+    ('silver',    'Silver'),
+    ('gold',      'Gold'),
+    ('platinum',  'Platinum'),
+    ('palladium', 'Palladium'),
+]
+
+_PT_SLUGS: list[tuple[str, str]] = [
+    ('coins',  'Coins'),
+    ('bars',   'Bars'),
+    ('rounds', 'Rounds'),
+    ('junk',   'Junk Silver'),
+]
+
+
+# ── DB-first SEO helpers ──────────────────────────────────────────────────
+
+def _strip_html(html_text: str) -> str:
+    """Strip HTML tags and decode common entities to get plain text."""
+    text = re.sub(r'<[^>]+>', '', html_text)
+    text = html_lib.unescape(text)
+    text = re.sub(r'\s{2,}', ' ', text)
+    return text.strip()
+
+
+def _extract_html_headings(html_text: str, tag: str) -> list:
+    """Extract plain-text content of all <tag> elements in an HTML string."""
+    pattern = rf'<{tag}[^>]*>([\s\S]*?)</{tag}>'
+    return [
+        _strip_html(m).strip()
+        for m in re.findall(pattern, html_text, re.IGNORECASE)
+        if _strip_html(m).strip()
+    ]
+
+
+def _fill_template(tpl: str, metal: str = '', product_type: str = '') -> str:
+    """Resolve {year}, {metal}, {product type} placeholders in a template string."""
+    if not tpl:
+        return ''
+    year   = str(datetime.utcnow().year)
+    result = re.sub(r'\{year\}',         year,         tpl,    flags=re.IGNORECASE)
+    result = re.sub(r'\{metal\}',        metal,        result, flags=re.IGNORECASE)
+    result = re.sub(r'\{product type\}', product_type, result, flags=re.IGNORECASE)
+    result = re.sub(r'\{ProductType\}',  product_type, result, flags=re.IGNORECASE)
+    result = re.sub(r'\{Product type\}', product_type, result, flags=re.IGNORECASE)
+    result = re.sub(r'\s{2,}', ' ', result)
+    return result.strip()
+
+
+def _load_fp_map(conn) -> dict:
+    """
+    Pre-load FilterPages_SEOData into a dict keyed by SearchBy.lower().
+    Call once before the Phase 2 scraping loop.
+    """
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT SearchBy, MetaTitle, MetaDescription "
+        "FROM FilterPages_SEOData WHERE IsActive = 1"
+    )
+    fp_map: dict = {}
+    for row in cursor.fetchall():
+        if row[0]:
+            fp_map[row[0].lower().strip()] = {
+                'MetaTitle':       row[1] or '',
+                'MetaDescription': row[2] or '',
+            }
+    return fp_map
+
+
+def _parse_url_segments(url: str) -> dict | None:
+    """
+    Parse a BPM page URL into its SEO routing components.
+    Returns None if the URL doesn't look like a BPM product/metal page.
+    """
+    try:
+        pathname = urlparse(url).path.lower().strip('/')
+    except Exception:
+        return None
+    parts = [p for p in pathname.split('/') if p]
+    if not parts:
+        return None
+
+    metal = ''
+    for slug, m in _METAL_SLUGS:
+        if slug in parts[0]:
+            metal = m
+            break
+    if not metal:
+        return None
+
+    product_type = ''
+    if len(parts) >= 2:
+        for slug, pt in _PT_SLUGS:
+            if slug in parts[1]:
+                product_type = pt
+                break
+
+    last_seg = parts[-1] if parts else ''
+
+    if len(parts) == 1:
+        search_by = 'metal'
+    elif len(parts) == 2:
+        search_by = 'metalandproducttypes'
+    else:
+        search_by = 'metalNproducttypeNseries'
+
+    return {
+        'parts':        parts,
+        'metal':        metal,
+        'product_type': product_type,
+        'last_seg':     last_seg,
+        'search_by':    search_by,
+        'series_text':  last_seg if len(parts) >= 3 else '',
+    }
+
+
+def _lookup_seo_from_db(conn, url: str, fp_map: dict) -> dict | None:
+    """
+    Attempt to retrieve all SEO fields for a BPM page URL from the database.
+
+    Handles two page types:
+      Tag page    — FilterPages_SEOData (MetaTitle/Desc templates) +
+                    SEOContents WHERE TagId = last-slug
+      Metal / ProductType / Series page — Search_GetPageSEOData SP
+
+    Returns a dict in the same shape as _scrape_page() on success,
+    or None if the URL is not a known BPM metal page or the lookup fails.
+
+    Note: The 8 static landing pages (e.g. /gold-bullion, /silver-bullion/silver-coins)
+    have hardcoded frontend content not stored in SEOContents.  The SP returns
+    empty H1 + PageContent for these.  The caller detects this and falls back
+    to Playwright.
+    """
+    segs = _parse_url_segments(url)
+    if not segs:
+        return None
+
+    is_tag = len(segs['parts']) >= 3 and segs['last_seg'] in fp_map
+
+    try:
+        cursor = conn.cursor()
+
+        if is_tag:
+            # ── Tag page ─────────────────────────────────────────────────
+            fp         = fp_map[segs['last_seg']]
+            meta_title = _fill_template(fp['MetaTitle'],       segs['metal'], segs['product_type'])
+            meta_desc  = _fill_template(fp['MetaDescription'], segs['metal'], segs['product_type'])
+
+            h1 = ''
+            content_html = ''
+            canonical    = ''
+            h2s = h3s = h4s = h5s = h6s = []
+
+            cursor.execute(
+                """
+                SELECT TOP 1
+                    ISNULL(CAST(ContentHeading AS NVARCHAR(MAX)), '') AS H1,
+                    ISNULL(CAST(Content        AS NVARCHAR(MAX)), '') AS Content,
+                    ISNULL(CanonicalUrl, '')                          AS CanonicalUrl
+                FROM SEOContents
+                WHERE IsActive = 1 AND TagId = ?
+                ORDER BY Id
+                """,
+                (segs['last_seg'],),
+            )
+            row = cursor.fetchone()
+            if row:
+                h1           = row[0] or ''
+                content_html = row[1] or ''
+                canonical    = row[2] or ''
+                h2s = _extract_html_headings(content_html, 'h2')
+                h3s = _extract_html_headings(content_html, 'h3')
+                h4s = _extract_html_headings(content_html, 'h4')
+                h5s = _extract_html_headings(content_html, 'h5')
+                h6s = _extract_html_headings(content_html, 'h6')
+
+            body_content = _strip_html(content_html)
+
+        else:
+            # ── Metal / ProductType / Series page — SP ────────────────────
+            cursor.execute(
+                "EXEC Search_GetPageSEOData ?,?,?,?,?,?,?,?",
+                (
+                    segs['search_by'],
+                    segs['metal'],
+                    segs['product_type'],
+                    '',                    # MintText
+                    segs['series_text'],
+                    '',                    # YearText
+                    0,                     # tagId
+                    '',                    # NarrowByMiscIdCSV
+                ),
+            )
+            # Search_GetMetaTitleNDescription (called internally) may emit
+            # intermediate result sets.  Skip them; use the very last one.
+            row = None
+            while True:
+                rows = cursor.fetchall()
+                if rows:
+                    row = rows[0]
+                if not cursor.nextset():
+                    break
+
+            if row is None:
+                return None
+
+            meta_title   = row[0] or ''   # MetaTitle
+            # row[1]  = MetaTitle_Template  (not used here)
+            meta_desc    = row[2] or ''   # MetaDescription
+            # row[3]  = MetaDesc_Template   (not used here)
+            h1           = row[4] or ''   # H1
+            content_html = row[5] or ''   # PageContent
+            canonical    = row[6] or ''   # CanonicalUrl
+
+            body_content = _strip_html(content_html)
+            h2s = _extract_html_headings(content_html, 'h2')
+            h3s = _extract_html_headings(content_html, 'h3')
+            h4s = _extract_html_headings(content_html, 'h4')
+            h5s = _extract_html_headings(content_html, 'h5')
+            h6s = _extract_html_headings(content_html, 'h6')
+
+        return {
+            'MetaTitle':       meta_title.strip()  or None,
+            'MetaDescription': meta_desc.strip()   or None,
+            'H1':              h1.strip()           or None,
+            'H2s':             json.dumps(h2s)      if h2s else None,
+            'H3s':             json.dumps(h3s)      if h3s else None,
+            'H4s':             json.dumps(h4s)      if h4s else None,
+            'H5s':             json.dumps(h5s)      if h5s else None,
+            'H6s':             json.dumps(h6s)      if h6s else None,
+            'BodyContent':     body_content         or None,
+            'WordCount':       len(body_content.split()) if body_content else 0,
+            'CanonicalURL':    canonical.strip()    or None,
+            'SchemaMarkup':    None,
+            'InternalLinks':   None,
+            'ImageAltTags':    None,
+            'ScrapeStatus':    'Success',
+            'ScrapeError':     None,
+            'FinalURL':        url,
+        }
+
+    except Exception as exc:
+        print(f"  [seo-db] Lookup failed for {url}: {exc}")
+        return None
+
+
 # ── Playwright scraping ───────────────────────────────────────────────────
 
 def _scrape_page(playwright, url: str) -> dict:
@@ -567,7 +816,7 @@ def _build_keyword_prompt(prompt_row, page: dict) -> tuple:
         "MetaDescription": page["MetaDescription"],
         "H1":              page["H1"],
         "H2s":             json.loads(page["H2s"]) if page["H2s"] else [],
-        "BodyContent":     (page["BodyContent"] or "")[:1500],  # short excerpt for LSI analysis
+        "BodyContent":     (page["BodyContent"] or "")[:5000],  # expanded for better LSI analysis
         "WordCount":       page["WordCount"],
     }
     user_msg = prompt_row.UserPromptTemplate.replace(
@@ -601,7 +850,7 @@ def _build_cannibal_prompt(prompt_row, tree_name: str, pages: list,
             "H1":              p["H1"],
             "H2s":             json.loads(p["H2s"]) if p["H2s"] else [],
             "H3s":             json.loads(p["H3s"]) if p["H3s"] else [],
-            "BodyContent":     (p["BodyContent"] or "")[:500],  # evidence excerpt only
+            "BodyContent":     (p["BodyContent"] or "")[:1500],  # evidence excerpt per page
         }
         for p in pages
     ]
@@ -627,7 +876,7 @@ def _build_content_prompt(prompt_row, page: dict,
         "H1":              page["H1"],
         "H2s":             json.loads(page["H2s"]) if page["H2s"] else [],
         "H3s":             json.loads(page["H3s"]) if page["H3s"] else [],
-        "BodyContent":     (page["BodyContent"] or "")[:5000],  # clean #seoContent
+        "BodyContent":     (page["BodyContent"] or "")[:15000],  # full editorial content for deep analysis
         "WordCount":       page["WordCount"],
         "CanonicalURL":    page["CanonicalURL"],
         "SchemaMarkup":    page["SchemaMarkup"],
@@ -1130,22 +1379,59 @@ def run_scan(scan_name: str, user_id: int, limit: int = None,
     scraped_count = len(done_slugs)
     print(f"  Already scraped: {scraped_count}/{total_urls} (skipping these)")
 
-    with sync_playwright() as pw:
-        for url in to_scrape:
-            try:
-                data = _scrape_page(pw, url)
-            except Exception:
-                data = {"ScrapeStatus": "Failed",
-                        "ScrapeError":  traceback.format_exc()[:2000]}
+    # Pre-load FilterPages_SEOData for DB-first lookup (avoids browser launch
+    # for the majority of BPM product/metal/series/tag pages).
+    fp_map = _load_fp_map(conn)
+    print(f"  FilterPages map: {len(fp_map)} tag entries")
 
-            final_url = data.get("FinalURL") or url
-            tree      = _get_tree_cluster(final_url)
-            _save_scraped_page(conn, scan_id, final_url, data, tree)
+    # First pass — resolve from DB wherever possible.
+    # Pages where DB has both H1 and BodyContent are saved immediately.
+    # Remaining pages (8 static landing pages, non-BPM URLs, DB errors) are
+    # queued for Playwright along with any partial DB data we already have.
+    playwright_queue: list[tuple[str, dict | None]] = []
+
+    for url in to_scrape:
+        db_data = _lookup_seo_from_db(conn, url, fp_map)
+        if db_data and db_data.get("H1") and db_data.get("BodyContent"):
+            tree = _get_tree_cluster(url)
+            _save_scraped_page(conn, scan_id, url, db_data, tree)
             scraped_count += 1
             print(
                 f"  Scraped {scraped_count}/{total_urls}"
-                f"  [{data['ScrapeStatus']}]  {url[:80]}"
+                f"  [DB]  {url[:80]}"
             )
+        else:
+            # DB missing content (static pages, non-BPM URLs, etc.) → Playwright
+            playwright_queue.append((url, db_data))
+
+    # Second pass — Playwright for pages without full DB content.
+    if playwright_queue:
+        print(f"  Playwright queue: {len(playwright_queue)} URL(s)")
+        with sync_playwright() as pw:
+            for url, partial_db in playwright_queue:
+                try:
+                    data = _scrape_page(pw, url)
+                    # If Playwright succeeded but DB already resolved meta fields,
+                    # prefer the DB values (they come from the authoritative source).
+                    if partial_db and data.get("ScrapeStatus") == "Success":
+                        if not data.get("MetaTitle") and partial_db.get("MetaTitle"):
+                            data["MetaTitle"] = partial_db["MetaTitle"]
+                        if not data.get("MetaDescription") and partial_db.get("MetaDescription"):
+                            data["MetaDescription"] = partial_db["MetaDescription"]
+                except Exception:
+                    data = {
+                        "ScrapeStatus": "Failed",
+                        "ScrapeError":  traceback.format_exc()[:2000],
+                    }
+
+                final_url = data.get("FinalURL") or url
+                tree      = _get_tree_cluster(final_url)
+                _save_scraped_page(conn, scan_id, final_url, data, tree)
+                scraped_count += 1
+                print(
+                    f"  Scraped {scraped_count}/{total_urls}"
+                    f"  [{data['ScrapeStatus']}]  {url[:80]}"
+                )
 
     # ── Phase 3: Clustering ───────────────────────────────────────────────
     print(f"\n--- Phase 3: Clustering ---")

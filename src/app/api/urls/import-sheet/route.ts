@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb, sql } from '@/lib/db';
 import { getSessionUser } from '@/lib/session';
+import { loadFilterPagesMap, lookupSeoData } from '@/lib/seo-lookup';
 
 /**
  * POST /api/urls/import-sheet
  *
- * Fetches a public Google Sheet as CSV, parses it, and bulk-inserts
- * rows into ClCode_URLs (skipping duplicates).
+ * Fetches a public Google Sheet as CSV, parses it, bulk-inserts rows into
+ * ClCode_URLs (skipping duplicates), then for each newly inserted URL calls
+ * Search_GetPageSEOData to populate MetaDescription, H1, FirstParagraph,
+ * CanonicalUrl and SEOSource directly from the BPM database — no crawling.
  *
  * Body: { sheetUrl: string }
  *
@@ -107,20 +110,34 @@ export async function POST(req: NextRequest) {
 
   const dataRows = rows.slice(1).filter((r) => r[urlIdx]?.trim());
 
-  // ── Bulk insert ───────────────────────────────────────────────────────────
+  // ── Connect to DB and pre-load FilterPages_SEOData ────────────────────────
   const db = await getDb();
-  let inserted = 0;
-  let skipped  = 0;
-  let errors   = 0;
+
+  // Pre-load tag map once — shared across all URL lookups in this import
+  let fpMap: Awaited<ReturnType<typeof loadFilterPagesMap>>;
+  try {
+    fpMap = await loadFilterPagesMap(db);
+  } catch (err: any) {
+    // Non-fatal — fall back to empty map (tag pages will still insert, just without SEO data)
+    console.warn('[import-sheet] Could not load FilterPages map:', err.message);
+    fpMap = new Map();
+  }
+
+  // ── Bulk insert + SEO population ──────────────────────────────────────────
+  let inserted    = 0;
+  let skipped     = 0;
+  let errors      = 0;
+  let seoFetched  = 0;
+  let seoMissed   = 0;
   const errorDetails: string[] = [];
 
   for (const row of dataRows) {
-    const pageURL          = row[urlIdx]?.trim() ?? '';
-    const pageTitle        = titleIdx     >= 0 ? row[titleIdx]?.trim()     || null : null;
-    const primaryKeyword   = primaryIdx   >= 0 ? row[primaryIdx]?.trim()   || null : null;
-    const secondaryKws     = secondaryIdx >= 0 ? row[secondaryIdx]?.trim() || null : null;
-    const priorityRaw      = priorityIdx  >= 0 ? row[priorityIdx]?.trim()  || null : null;
-    const priority         = ['High', 'Medium', 'Low'].includes(priorityRaw ?? '') ? priorityRaw : null;
+    const pageURL        = row[urlIdx]?.trim()         ?? '';
+    const pageTitle      = titleIdx     >= 0 ? row[titleIdx]?.trim()     || null : null;
+    const primaryKeyword = primaryIdx   >= 0 ? row[primaryIdx]?.trim()   || null : null;
+    const secondaryKws   = secondaryIdx >= 0 ? row[secondaryIdx]?.trim() || null : null;
+    const priorityRaw    = priorityIdx  >= 0 ? row[priorityIdx]?.trim()  || null : null;
+    const priority       = ['High', 'Medium', 'Low'].includes(priorityRaw ?? '') ? priorityRaw : null;
 
     if (!pageURL) continue;
 
@@ -131,6 +148,8 @@ export async function POST(req: NextRequest) {
       continue;
     }
 
+    // ── 1. MERGE into ClCode_URLs (skip if duplicate) ──────────────────────
+    let wasInserted = false;
     try {
       const result = await db.request()
         .input('pageURL',           sql.NVarChar, pageURL)
@@ -148,19 +167,59 @@ export async function POST(req: NextRequest) {
             VALUES (@pageURL, @pageTitle, @primaryKeyword, @secondaryKeywords, @priority, GETUTCDATE(), @userId);
         `);
 
-      if ((result.rowsAffected?.[0] ?? 0) > 0) inserted++;
+      wasInserted = (result.rowsAffected?.[0] ?? 0) > 0;
+      if (wasInserted) inserted++;
       else skipped++;
     } catch (err: any) {
       errors++;
       errorDetails.push(`DB error for ${pageURL}: ${err.message}`);
+      continue;
+    }
+
+    // ── 2. For newly inserted rows: fetch all SEO fields from DB ───────────
+    if (!wasInserted) continue;
+
+    try {
+      const seo = await lookupSeoData(db, pageURL, fpMap);
+
+      await db.request()
+        .input('pageURL',       sql.NVarChar(2048),  pageURL)
+        // Only overwrite PageTitle if the SP returned a value (DB is source of truth)
+        .input('metaTitle',     sql.NVarChar(512),   seo.metaTitle     || null)
+        .input('metaDesc',      sql.NVarChar(2000),  seo.metaDescription  || null)
+        .input('h1',            sql.NVarChar(512),   seo.h1            || null)
+        .input('firstPara',     sql.NVarChar(sql.MAX), seo.firstParagraph || null)
+        .input('canonicalUrl',  sql.NVarChar(2048),  seo.canonicalUrl  || null)
+        .input('seoSource',     sql.NVarChar(50),    seo.source        || null)
+        .query(`
+          UPDATE ClCode_URLs
+          SET
+            PageTitle      = CASE WHEN @metaTitle  IS NOT NULL AND @metaTitle  <> '' THEN @metaTitle  ELSE PageTitle END,
+            MetaDescription = @metaDesc,
+            H1              = @h1,
+            FirstParagraph  = @firstPara,
+            CanonicalUrl    = @canonicalUrl,
+            SEOSource       = @seoSource,
+            SEOFetchedAt    = GETUTCDATE()
+          WHERE PageURL = @pageURL
+        `);
+
+      if (seo.metaTitle) seoFetched++;
+      else seoMissed++;
+
+    } catch (seoErr: any) {
+      console.warn(`[import-sheet] SEO lookup failed for ${pageURL}: ${seoErr.message}`);
+      seoMissed++;
     }
   }
 
   return NextResponse.json({
-    total: dataRows.length,
+    total:      dataRows.length,
     inserted,
     skipped,
     errors,
+    seoFetched,
+    seoMissed,
     errorDetails: errorDetails.slice(0, 10), // cap to first 10
   });
 }
