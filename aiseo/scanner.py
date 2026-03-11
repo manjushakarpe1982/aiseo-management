@@ -106,7 +106,7 @@ def _init_claude_client(conn) -> None:
     print(f"  Claude client initialised  (key: {masked})")
 
 
-def _call_claude(system_prompt: str, user_message: str) -> tuple:
+def _call_claude(system_prompt: str, user_message: str, max_tokens: int = 8192) -> tuple:
     """
     Raw Claude API call with prompt caching + rate-limit retry. 3 s sleep after each call.
 
@@ -115,13 +115,16 @@ def _call_claude(system_prompt: str, user_message: str) -> tuple:
     of normal input price); every subsequent call within the 5-minute cache window
     reads from cache (costs only 10 % of normal input price).
 
+    max_tokens: cap on output tokens. Increase for phases that produce large JSON
+                (e.g. ContentImprovement / Cannibalization). Default: 8192.
+
     Returns (text, input_tokens, output_tokens, cache_write_tokens, cache_read_tokens).
     """
     for attempt in range(3):
         try:
             response = _claude.messages.create(
                 model=CLAUDE_MODEL,
-                max_tokens=8192,
+                max_tokens=max_tokens,
                 system=[
                     {
                         "type": "text",
@@ -259,12 +262,15 @@ def _call_gemini(system_prompt: str, user_message: str) -> tuple:
 
 def _call_claude_logged(conn, scan_id: int, call_type: str, entity_url: str,
                         system_prompt: str, user_message: str,
-                        provider: str = "claude") -> str:
+                        provider: str = "claude",
+                        max_tokens: int = 8192) -> str:
     """
     Wrap _call_claude and persist the full input/output to ClCode_ClaudeCallLog.
 
     call_type: "KeywordExtraction" | "Cannibalization" | "ContentImprovement"
     entity_url: page URL (4a/4c) or tree cluster name (4b)
+    max_tokens: forwarded to _call_claude. Use higher values for phases that
+                produce large JSON output (ContentImprovement, Cannibalization).
 
     Raises PromptTooLargeError (already logged) if prompt exceeds MAX_INPUT_TOKENS.
     Always re-raises any other exception so the caller can handle it.
@@ -323,7 +329,7 @@ def _call_claude_logged(conn, scan_id: int, call_type: str, entity_url: str,
         if provider == "gemini":
             raw, in_tok, out_tok, cache_write, cache_read = _call_gemini(system_prompt, user_message)
         else:
-            raw, in_tok, out_tok, cache_write, cache_read = _call_claude(system_prompt, user_message)
+            raw, in_tok, out_tok, cache_write, cache_read = _call_claude(system_prompt, user_message, max_tokens=max_tokens)
         succeeded = True
 
         if provider == "gemini":
@@ -1546,6 +1552,7 @@ def run_scan(scan_name: str, user_id: int, limit: int = None,
                         conn, scan_id, "Cannibalization",
                         tree_name, sys_p, user_msg,
                         provider=provider,
+                        max_tokens=16000,
                     )
                     api_call_total += 1
                     issues = _parse_json_response(raw)
@@ -1599,6 +1606,7 @@ def run_scan(scan_name: str, user_id: int, limit: int = None,
                         conn, scan_id, "ContentImprovement",
                         page["PageURL"], sys_p, user_msg,
                         provider=provider,
+                        max_tokens=16000,
                     )
                     api_call_total += 1
                     improvements = _parse_json_response(raw)
