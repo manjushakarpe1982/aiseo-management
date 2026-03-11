@@ -1,7 +1,8 @@
 /**
  * Export BPM gold page SEO data to Excel.
- * Uses exact SEOContents IDs (from bpm-pages.ts) and the SPs used by the API,
- * so the values are guaranteed to match what the web app shows.
+ *
+ * All lookup is URL-driven — no hardcoded DB row IDs needed.
+ * Add any BPM page URL to the PAGES array below.
  *
  * Usage: node scripts/export_page_seo_final.js
  */
@@ -19,57 +20,112 @@ const config = {
 
 const YEAR = new Date().getFullYear();
 
-// ── BPM pages — mirrors src/lib/bpm-pages.ts ─────────────────────────────────
+// ── Pages to export — add URLs here ──────────────────────────────────────────
 const PAGES = [
-  {
-    label:              'Gold Bullion',
-    url:                'https://www.boldpreciousmetals.com/gold-bullion',
-    // Search_GetMetaTitleNDescription params
-    SearchBy:           'metal',
-    metal:              'Gold',
-    productType:        '',
-    series:             '',
-    mint:               '',
-    // Search_GetSEOContents params (use stored values, not SP params)
-    seoMetalId:         'Gold',
-    seoProductTypeId:   '',        // stored as NULL
-    seoSeriesId:        '',        // stored as NULL
-    seoMintId:          '',
-    // Direct row ID — used to cross-check and select correct row
-    seoContentsId:      160,
-    filterPageSearchBy: 'metal',
-  },
-  {
-    label:              'Gold Coins',
-    url:                'https://www.boldpreciousmetals.com/gold-bullion/gold-coins',
-    SearchBy:           'metalandproducttypes',
-    metal:              'Gold',
-    productType:        'Coins',
-    series:             '',
-    mint:               '',
-    seoMetalId:         'Gold',
-    seoProductTypeId:   'Coins',
-    seoSeriesId:        '',
-    seoMintId:          '',
-    seoContentsId:      188,
-    filterPageSearchBy: 'metalandproducttypes',
-  },
-  {
-    label:              'American Gold Eagle Coins',
-    url:                'https://www.boldpreciousmetals.com/gold-bullion/gold-coins/american-gold-eagle-coins',
-    SearchBy:           'metalNproducttypeNseries',
-    metal:              'Gold',
-    productType:        'Coins',
-    series:             'american-gold-eagle-coins',
-    mint:               '',
-    seoMetalId:         'Gold',
-    seoProductTypeId:   '',        // stored as NULL in DB row 393
-    seoSeriesId:        'american-gold-eagle-coins',
-    seoMintId:          '',
-    seoContentsId:      393,
-    filterPageSearchBy: 'metalNproducttypeNseries',
-  },
+  { url: 'https://www.boldpreciousmetals.com/gold-bullion' },
+  { url: 'https://www.boldpreciousmetals.com/gold-bullion/gold-coins' },
+  { url: 'https://www.boldpreciousmetals.com/gold-bullion/gold-coins/american-gold-eagle-coins' },
 ];
+
+// ── URL → SP / DB params ──────────────────────────────────────────────────────
+// Derives all parameters needed from the URL path, no hardcoded IDs.
+const METAL_MAP   = { gold: 'Gold', silver: 'Silver', platinum: 'Platinum', palladium: 'Palladium' };
+const PT_MAP      = { coins: 'Coins', bars: 'Bars', rounds: 'Rounds', junk: 'Junk Silver' };
+
+function deriveParams(rawUrl) {
+  let pathname;
+  try { pathname = new URL(rawUrl).pathname.replace(/^\/|\/$/g, ''); }
+  catch { throw new Error('Invalid URL: ' + rawUrl); }
+
+  const segs = pathname.toLowerCase().split('/');
+
+  // ── Metal from segment 0 ──
+  let metal = null;
+  for (const [slug, m] of Object.entries(METAL_MAP)) {
+    if (segs[0]?.includes(slug)) { metal = m; break; }
+  }
+  if (!metal) throw new Error('Cannot determine metal from URL: ' + rawUrl);
+
+  // ── Product type from segment 1 ──
+  let productType = '';
+  if (segs.length >= 2) {
+    for (const [slug, pt] of Object.entries(PT_MAP)) {
+      if (segs[1]?.includes(slug)) { productType = pt; break; }
+    }
+  }
+
+  // ── Series from segment 2 (use the raw slug as stored in DB) ──
+  const series = segs.length >= 3 ? segs[2] : '';
+
+  // ── SearchBy ──
+  let SearchBy;
+  if (segs.length === 1)                           SearchBy = 'metal';
+  else if (segs.length === 2 && productType)       SearchBy = 'metalandproducttypes';
+  else if (segs.length >= 3 && series)             SearchBy = 'metalNproducttypeNseries';
+  else                                             SearchBy = 'metal';
+
+  return { metal, productType, series, SearchBy, filterPageSearchBy: SearchBy };
+}
+
+// ── Find the matching SEOContents row by SQL (exact-match, no client filter) ──
+// For series pages: match by SeriesId exactly — ProductTypeId may be NULL in DB
+// even when the URL has a productType segment (e.g. American Gold Eagle).
+async function findSeoContentsRow(pool, { metal, productType, series }) {
+  let query, params;
+
+  if (series) {
+    // Series page — identify purely by metal + series slug
+    query = `
+      SELECT TOP 1 Id, ContentHeading AS H1,
+             CAST(Content AS NVARCHAR(MAX)) AS Content, CanonicalUrl
+      FROM SEOContents
+      WHERE IsActive = 1
+        AND MetalId         = @metal
+        AND SeriesId        = @series
+        AND (MintId  IS NULL OR MintId  = '')
+        AND (TagId   IS NULL OR TagId   = '')
+      ORDER BY Id
+    `;
+    params = { metal, series };
+  } else if (productType) {
+    // Product-type page — match metal + productType, no series
+    query = `
+      SELECT TOP 1 Id, ContentHeading AS H1,
+             CAST(Content AS NVARCHAR(MAX)) AS Content, CanonicalUrl
+      FROM SEOContents
+      WHERE IsActive = 1
+        AND MetalId       = @metal
+        AND ProductTypeId = @productType
+        AND (SeriesId IS NULL OR SeriesId = '')
+        AND (MintId   IS NULL OR MintId   = '')
+        AND (TagId    IS NULL OR TagId    = '')
+      ORDER BY Id
+    `;
+    params = { metal, productType };
+  } else {
+    // Metal-only page — metal set, everything else NULL/empty
+    query = `
+      SELECT TOP 1 Id, ContentHeading AS H1,
+             CAST(Content AS NVARCHAR(MAX)) AS Content, CanonicalUrl
+      FROM SEOContents
+      WHERE IsActive = 1
+        AND MetalId         = @metal
+        AND (ProductTypeId IS NULL OR ProductTypeId = '')
+        AND (SeriesId      IS NULL OR SeriesId      = '')
+        AND (MintId        IS NULL OR MintId        = '')
+        AND (TagId         IS NULL OR TagId         = '')
+      ORDER BY Id
+    `;
+    params = { metal };
+  }
+
+  const r = pool.request();
+  if (params.metal)       r.input('metal',       sql.VarChar(500), params.metal);
+  if (params.productType) r.input('productType', sql.VarChar(500), params.productType);
+  if (params.series)      r.input('series',      sql.VarChar(500), params.series);
+  const res = await r.query(query);
+  return res.recordset[0] || null;
+}
 
 function fillTemplate(tpl, p) {
   if (!tpl) return '';
@@ -80,7 +136,7 @@ function fillTemplate(tpl, p) {
     .replace(/\{ProductType\}/gi,  p.productType)
     .replace(/\{Product type\}/gi, p.productType)
     .replace(/\{series\}/gi,       p.series)
-    .replace(/\{mint\}/gi,         p.mint)
+    .replace(/\{mint\}/gi,         '')
     .replace(/\s{2,}/g, ' ')
     .trim();
 }
@@ -91,8 +147,10 @@ function fillTemplate(tpl, p) {
 
   const rows = [];
 
-  for (const p of PAGES) {
-    console.log(`── ${p.label}`);
+  for (const page of PAGES) {
+    const p = deriveParams(page.url);
+    console.log(`── ${page.url}`);
+    console.log(`   SearchBy=${p.SearchBy}  metal=${p.metal}  pt=${p.productType || '—'}  series=${p.series || '—'}`);
 
     // ── 1. MetaTitle + MetaDescription via SP ──────────────────────────────
     let metaTitle = '', metaDescription = '';
@@ -101,7 +159,7 @@ function fillTemplate(tpl, p) {
       r.input('SearchBy',          sql.VarChar(50),   p.SearchBy);
       r.input('MetalText',         sql.VarChar(500),  p.metal);
       r.input('ProductTypeText',   sql.VarChar(500),  p.productType);
-      r.input('MintText',          sql.VarChar(500),  p.mint);
+      r.input('MintText',          sql.VarChar(500),  '');
       r.input('SeriesText',        sql.VarChar(500),  p.series);
       r.input('YearText',          sql.VarChar(500),  '');
       r.input('tagId',             sql.Int,           0);
@@ -123,44 +181,34 @@ function fillTemplate(tpl, p) {
         metaTitleTemplate = r2.recordset[0].MetaTitle       || '';
         metaDescTemplate  = r2.recordset[0].MetaDescription || '';
       }
-    } catch (e) { console.warn('  FilterPages SP error:', e.message); }
+    } catch (e) { console.warn('  FilterPages error:', e.message); }
 
-    // ── 3. H1 + Content + CanonicalUrl — query directly by known ID ────────
-    //    (The SP Search_GetSEOContents uses the same seo* params but the
-    //     direct-ID query is unambiguous and avoids row-matching bugs.)
-    let h1 = '', content = '', canonicalUrl = '';
+    // ── 3. H1 + Content + CanonicalUrl — SQL exact-match by derived params ─
+    let h1 = '', content = '', canonicalUrl = '', seoContentsId = '';
     try {
-      const r3 = await pool.request()
-        .input('id', sql.Int, p.seoContentsId)
-        .query(`
-          SELECT ContentHeading AS H1,
-                 CAST(Content AS NVARCHAR(MAX)) AS Content,
-                 CanonicalUrl
-          FROM SEOContents
-          WHERE Id = @id
-        `);
-      if (r3.recordset[0]) {
-        h1           = r3.recordset[0].H1           || '';
-        content      = r3.recordset[0].Content       || '';
-        canonicalUrl = r3.recordset[0].CanonicalUrl  || '';
+      const sc_row = await findSeoContentsRow(pool, p);
+      if (sc_row) {
+        seoContentsId = sc_row.Id;
+        h1            = sc_row.H1           || '';
+        content       = sc_row.Content      || '';
+        canonicalUrl  = sc_row.CanonicalUrl || '';
       }
-    } catch (e) { console.warn('  SEOContents query error:', e.message); }
+    } catch (e) { console.warn('  SEOContents error:', e.message); }
 
-    console.log(`  MetaTitle:   ${metaTitle.slice(0, 80)}`);
-    console.log(`  MetaDesc:    ${metaDescription.slice(0, 80)}`);
-    console.log(`  H1:          ${h1 || '(empty in DB)'}`);
-    console.log(`  Content len: ${content.length}${content.length === 0 ? '  ← not yet written' : ''}`);
-    console.log(`  CanonicalUrl:${canonicalUrl || '(empty in DB)'}`);
+    console.log(`   MetaTitle:    ${metaTitle.slice(0, 80)}`);
+    console.log(`   H1:           ${h1 || '(empty in DB)'}`);
+    console.log(`   Content len:  ${content.length}${content.length === 0 ? '  ← not yet written' : ''}`);
+    console.log(`   CanonicalUrl: ${canonicalUrl || '(empty in DB)'}`);
+    console.log(`   SEOContents Id: ${seoContentsId || '(no row found)'}`);
     console.log();
 
     rows.push({
-      URL:                   p.url,
-      Label:                 p.label,
+      URL:                   page.url,
       SP_SearchBy:           p.SearchBy,
       SP_Metal:              p.metal,
       SP_ProductType:        p.productType,
       SP_Series:             p.series,
-      SEOContents_Id:        p.seoContentsId,
+      SEOContents_Id:        seoContentsId,
       MetaTitle:             metaTitle,
       MetaTitle_Template:    metaTitleTemplate,
       MetaDescription:       metaDescription,
@@ -184,7 +232,6 @@ function fillTemplate(tpl, p) {
 
   ws.columns = [
     { header: 'URL',                         key: 'URL',                width: 65 },
-    { header: 'Category / Label',            key: 'Label',              width: 28 },
     { header: 'SP SearchBy',                 key: 'SP_SearchBy',        width: 24 },
     { header: 'SP Metal',                    key: 'SP_Metal',           width: 10 },
     { header: 'SP Product Type',             key: 'SP_ProductType',     width: 15 },
@@ -217,7 +264,7 @@ function fillTemplate(tpl, p) {
       const key     = ws.columns[colNum - 1]?.key;
       const missing = ['MetaTitle', 'MetaDescription', 'H1', 'PageContent'].includes(key)
                       && (!cell.value || String(cell.value).trim() === '');
-      cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: missing ? missBg : rowBg[i] } };
+      cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: missing ? missBg : rowBg[i % rowBg.length] } };
       cell.alignment = { vertical: 'top', wrapText: true };
       cell.font      = { size: 10 };
     });
