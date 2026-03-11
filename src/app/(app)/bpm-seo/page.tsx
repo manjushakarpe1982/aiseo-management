@@ -5,22 +5,16 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface BpmSeoData {
-  id: string;
+  URLID: number;
   url: string;
   label: string;
-  searchBy: string;
-  metalId: string;
-  productTypeId: string;
-  seriesId: string;
-  seoContentsId: number;
-  filterPageSearchBy: string;
   MetaTitle: string;
-  MetaTitle_Template: string;
   MetaDescription: string;
-  MetaDesc_Template: string;
   H1: string;
-  Content: string;
+  Content: string;     // FirstParagraph from ClCode_URLs
   CanonicalUrl: string;
+  SEOSource: string | null;
+  SEOFetchedAt: string | null;
 }
 
 interface BpmSuggestion {
@@ -49,19 +43,6 @@ interface ScanOption {
   StartedAt: string;
 }
 
-// BPM page id lookup by URL (mirrors bpm-pages.ts, client-safe)
-const BPM_PAGE_ID_MAP: Record<string, string> = {
-  'https://www.boldpreciousmetals.com/gold-bullion': 'gold-bullion',
-  'https://www.boldpreciousmetals.com/gold-bullion/gold-coins': 'gold-coins',
-  'https://www.boldpreciousmetals.com/gold-bullion/gold-coins/american-gold-eagle-coins': 'american-gold-eagle',
-};
-
-const BPM_PAGE_LABELS: Record<string, string> = {
-  'gold-bullion':      'Gold Bullion',
-  'gold-coins':        'Gold Coins',
-  'american-gold-eagle': 'American Gold Eagle',
-};
-
 const PUSH_FIELD_MAP: Record<string, string> = {
   'meta title':       'MetaTitle',
   'meta description': 'MetaDescription',
@@ -71,11 +52,6 @@ const PUSH_FIELD_MAP: Record<string, string> = {
   'canonical url':    'CanonicalUrl',
   'canonical':        'CanonicalUrl',
 };
-
-function lookupPageId(url: string | null | undefined): string | null {
-  if (!url) return null;
-  return BPM_PAGE_ID_MAP[url.replace(/\/$/, '')] ?? null;
-}
 
 function normField(name: string | null | undefined): string {
   if (!name) return '';
@@ -203,7 +179,7 @@ function SEOEditModal({ page, onClose, onSaved }: {
       if (content         !== page.Content)          fields.Content         = content;
       if (Object.keys(fields).length === 0) { setSaving(false); return; }
 
-      const res  = await fetch('/api/bpm-seo', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: page.id, fields }) });
+      const res  = await fetch('/api/bpm-seo', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ urlId: page.URLID, fields }) });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Save failed');
       setSaved(true);
@@ -226,8 +202,8 @@ function SEOEditModal({ page, onClose, onSaved }: {
         <div className="flex items-start justify-between px-6 py-5 border-b border-border">
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-xs font-semibold text-muted uppercase tracking-wider bg-surface2 border border-border px-2 py-0.5 rounded-full">BPM SEO</span>
-              <span className="text-xs text-muted font-mono">{page.searchBy}</span>
+              <span className="text-xs font-semibold text-muted uppercase tracking-wider bg-surface2 border border-border px-2 py-0.5 rounded-full">Edit SEO</span>
+              {page.SEOSource && <span className="text-xs text-muted font-mono">source: {page.SEOSource}</span>}
             </div>
             <h2 className="text-lg font-bold text-ink">{page.label}</h2>
             <a href={page.url} target="_blank" rel="noreferrer" className="text-sm text-primary hover:underline font-mono break-all">{page.url}</a>
@@ -255,12 +231,9 @@ function SEOEditModal({ page, onClose, onSaved }: {
                   <FieldLabel label="Meta Title" />
                   <CharCounter value={metaTitle} ideal={60} max={70} />
                 </div>
-                {page.MetaTitle_Template && (
-                  <p className="text-xs text-muted mb-2 bg-surface2 border border-border rounded-lg px-3 py-1.5 font-mono">Template: {page.MetaTitle_Template}</p>
-                )}
                 <input type="text" value={metaTitle} onChange={(e) => setMetaTitle(e.target.value)} placeholder="Enter meta title…"
                   className="w-full px-4 py-2.5 rounded-xl border border-border bg-surface2 text-ink text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors" />
-                <p className="text-xs text-muted mt-1.5">Ideal: 50–60 chars · Max: 70 chars. Updates <code className="bg-surface2 px-1 rounded">FilterPages_SEOData</code> where SearchBy = <code className="bg-surface2 px-1 rounded">{page.filterPageSearchBy}</code></p>
+                <p className="text-xs text-muted mt-1.5">Ideal: 50–60 chars · Max: 70 chars</p>
               </div>
               <div>
                 <div className="flex items-center justify-between mb-1.5">
@@ -275,7 +248,7 @@ function SEOEditModal({ page, onClose, onSaved }: {
                 <FieldLabel label="Canonical URL" />
                 <input type="text" value={canonicalUrl} onChange={(e) => setCanonicalUrl(e.target.value)} placeholder="https://www.boldpreciousmetals.com/…"
                   className="w-full px-4 py-2.5 rounded-xl border border-border bg-surface2 text-ink text-sm font-mono focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors" />
-                <p className="text-xs text-muted mt-1.5">Updates <code className="bg-surface2 px-1 rounded">SEOContents.CanonicalUrl</code> (row {page.seoContentsId})</p>
+                <p className="text-xs text-muted mt-1.5">Canonical URL for this page</p>
               </div>
             </>
           )}
@@ -288,12 +261,12 @@ function SEOEditModal({ page, onClose, onSaved }: {
                 </div>
                 <input type="text" value={h1} onChange={(e) => setH1(e.target.value)} placeholder="Enter H1 heading…"
                   className="w-full px-4 py-2.5 rounded-xl border border-border bg-surface2 text-ink text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors" />
-                <p className="text-xs text-muted mt-1.5">Updates <code className="bg-surface2 px-1 rounded">SEOContents.ContentHeading</code> (row {page.seoContentsId})</p>
+                <p className="text-xs text-muted mt-1.5">Ideal: 20–70 chars</p>
               </div>
               <div>
                 <FieldLabel label="Page Content (HTML)" />
                 <HtmlEditor value={content} onChange={setContent} placeholder="<h2>Your heading</h2>&#10;<p>Your content here…</p>" />
-                <p className="text-xs text-muted mt-1.5">Updates <code className="bg-surface2 px-1 rounded">SEOContents.Content</code> (row {page.seoContentsId}). Switch to <strong>Preview</strong> to see rendered output.</p>
+                <p className="text-xs text-muted mt-1.5">HTML page content. Switch to <strong>Preview</strong> to see rendered output.</p>
               </div>
             </>
           )}
@@ -341,9 +314,11 @@ function PageCard({ page, onEdit }: { page: BpmSeoData; onEdit: () => void }) {
         <div className="flex-1 min-w-0">
           <p className="font-bold text-ink text-base mb-0.5">{page.label}</p>
           <a href={page.url} target="_blank" rel="noreferrer" className="text-sm text-primary hover:underline font-mono break-all block">{shortUrl}</a>
-          <div className="flex flex-wrap items-center gap-2 mt-3">
-            <span className="text-xs bg-surface2 border border-border text-muted px-2 py-0.5 rounded-full font-mono">{page.searchBy}</span>
-          </div>
+          {page.SEOSource && (
+            <div className="flex flex-wrap items-center gap-2 mt-3">
+              <span className="text-xs bg-surface2 border border-border text-muted px-2 py-0.5 rounded-full font-mono">source: {page.SEOSource}</span>
+            </div>
+          )}
         </div>
         <button onClick={onEdit} className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-blue-600 text-white text-sm font-semibold rounded-lg transition-colors flex-shrink-0">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -355,16 +330,15 @@ function PageCard({ page, onEdit }: { page: BpmSeoData; onEdit: () => void }) {
 
       <div className="mt-4 grid grid-cols-2 gap-2">
         {[
-          { key: 'Meta Title',   val: page.MetaTitle,       src: 'FilterPages_SEOData' },
-          { key: 'Meta Desc',    val: page.MetaDescription, src: 'FilterPages_SEOData' },
-          { key: 'H1',           val: page.H1,              src: 'SEOContents' },
-          { key: 'Page Content', val: page.Content,         src: 'SEOContents' },
-        ].map(({ key, val, src }) => (
+          { key: 'Meta Title',   val: page.MetaTitle       },
+          { key: 'Meta Desc',    val: page.MetaDescription },
+          { key: 'H1',           val: page.H1              },
+          { key: 'Page Content', val: page.Content         },
+        ].map(({ key, val }) => (
           <div key={key} className="flex items-start gap-2 text-xs">
             <StatusDot has={!!val} />
             <div className="flex-1 min-w-0">
               <span className="font-semibold text-ink">{key}</span>
-              <span className="text-muted ml-1">({src})</span>
               {val ? (
                 <p className="text-muted truncate mt-0.5">{val.replace(/<[^>]+>/g, ' ').slice(0, 80)}</p>
               ) : (
@@ -389,8 +363,8 @@ function PageCard({ page, onEdit }: { page: BpmSeoData; onEdit: () => void }) {
 
 // ─── Push-to-DB inline panel (for suggestions) ────────────────────────────────
 
-function SuggestionPushPanel({ item, onDismiss }: { item: BpmSuggestion; onDismiss: () => void }) {
-  const pageId   = lookupPageId(item.PageURL);
+function SuggestionPushPanel({ item, pages, onDismiss }: { item: BpmSuggestion; pages: BpmSeoData[]; onDismiss: () => void }) {
+  const page     = pages.find((p) => p.url.replace(/\/$/, '') === item.PageURL.replace(/\/$/, ''));
   const fieldKey = normField(item.FieldName);
   const [value,   setValue]   = useState(item.SuggestedContent ?? '');
   const [pushing, setPushing] = useState(false);
@@ -399,7 +373,7 @@ function SuggestionPushPanel({ item, onDismiss }: { item: BpmSuggestion; onDismi
   const isContent   = fieldKey === 'Content';
   const isMultiLine = fieldKey === 'MetaDescription';
 
-  if (!pageId || !fieldKey) {
+  if (!page || !fieldKey) {
     return (
       <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 flex items-start gap-3">
         <svg className="w-4 h-4 text-amber-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -417,7 +391,7 @@ function SuggestionPushPanel({ item, onDismiss }: { item: BpmSuggestion; onDismi
   const handlePush = async () => {
     setPushing(true); setResult(null);
     try {
-      const res  = await fetch('/api/bpm-seo', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: pageId, fields: { [fieldKey]: value } }) });
+      const res  = await fetch('/api/bpm-seo', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ urlId: page.URLID, fields: { [fieldKey]: value } }) });
       const data = await res.json();
       setResult(res.ok && data.success
         ? { ok: true,  msg: `✓ ${fieldKey} updated in the database.` }
@@ -433,7 +407,7 @@ function SuggestionPushPanel({ item, onDismiss }: { item: BpmSuggestion; onDismi
         <div>
           <p className="text-sm font-semibold text-ink">Push to Database</p>
           <p className="text-xs text-muted mt-0.5">
-            Field: <span className="font-mono font-medium text-ink">{fieldKey}</span> · Page: <span className="font-mono font-medium text-ink">{pageId}</span>
+            Field: <span className="font-mono font-medium text-ink">{fieldKey}</span> · Page: <span className="font-mono font-medium text-ink">{page.label}</span>
           </p>
         </div>
         <button onClick={onDismiss} title="Cancel" className="text-muted hover:text-ink transition-colors">
@@ -476,6 +450,7 @@ function SuggestionPushPanel({ item, onDismiss }: { item: BpmSuggestion; onDismi
 
 function SuggestionCard({
   item,
+  pages,
   open,
   onToggle,
   pushOpenId,
@@ -483,13 +458,15 @@ function SuggestionCard({
   onStatusUpdated,
 }: {
   item: BpmSuggestion;
+  pages: BpmSeoData[];
   open: boolean;
   onToggle: () => void;
   pushOpenId: number | null;
   setPushOpenId: (id: number | null) => void;
   onStatusUpdated: (id: number, status: string, comment: string) => void;
 }) {
-  const pageLabel = BPM_PAGE_LABELS[lookupPageId(item.PageURL) ?? ''] ?? item.PageURL.replace(/^https?:\/\/[^/]+/, '');
+  const matchedPage = pages.find((p) => p.url.replace(/\/$/, '') === item.PageURL.replace(/\/$/, ''));
+  const pageLabel   = matchedPage?.label ?? item.PageURL.replace(/^https?:\/\/[^/]+/, '');
   const shortUrl  = item.PageURL.replace(/^https?:\/\/(www\.)?[^/]+/, '…');
 
   return (
@@ -582,7 +559,7 @@ function SuggestionCard({
 
           {/* Push panel */}
           {pushOpenId === item.ImprovementID && (
-            <SuggestionPushPanel item={item} onDismiss={() => setPushOpenId(null)} />
+            <SuggestionPushPanel item={item} pages={pages} onDismiss={() => setPushOpenId(null)} />
           )}
 
           {/* Reasoning + Impact */}
@@ -691,7 +668,7 @@ const STATUS_OPTIONS   = ['All', 'Yet to Act', 'Acted', 'Deferred'] as const;
 type PriorityFilter = typeof PRIORITY_OPTIONS[number];
 type StatusFilter   = typeof STATUS_OPTIONS[number];
 
-function SuggestionsSection() {
+function SuggestionsSection({ pages }: { pages: BpmSeoData[] }) {
   const [improvements, setImprovements] = useState<BpmSuggestion[]>([]);
   const [scans,        setScans]        = useState<ScanOption[]>([]);
   const [loading,      setLoading]      = useState(true);
@@ -728,12 +705,12 @@ function SuggestionsSection() {
     ));
   };
 
-  // Unique pages for filter pill
-  const uniquePageIds = Array.from(new Set(improvements.map((i) => lookupPageId(i.PageURL)).filter(Boolean))) as string[];
+  // Unique page URLs for filter pill
+  const uniquePageUrls = Array.from(new Set(improvements.map((i) => i.PageURL)));
 
   const filtered = improvements.filter((i) => {
     if (filterScan     !== 'All' && String(i.ScanID) !== filterScan) return false;
-    if (filterPage     !== 'All' && lookupPageId(i.PageURL) !== filterPage) return false;
+    if (filterPage     !== 'All' && i.PageURL !== filterPage) return false;
     if (filterPriority !== 'All' && i.Priority !== filterPriority) return false;
     if (filterStatus   !== 'All' && i.Status   !== filterStatus)   return false;
     return true;
@@ -823,18 +800,22 @@ function SuggestionsSection() {
             </div>
 
             {/* Page pills */}
-            {uniquePageIds.length > 1 && (
+            {uniquePageUrls.length > 1 && (
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-sm font-semibold text-muted uppercase tracking-wide w-16 flex-shrink-0">Page</span>
                 <div className="flex gap-1 flex-wrap">
-                  {(['All', ...uniquePageIds] as string[]).map((pid) => (
-                    <button key={pid} onClick={() => setFilterPage(pid)}
-                      className={`text-sm px-2.5 py-1 rounded-full border font-medium transition-colors ${
-                        filterPage === pid ? 'bg-primary text-white border-primary' : 'bg-surface text-muted border-border hover:border-primary/40 hover:text-ink'
-                      }`}>
-                      {pid === 'All' ? 'All' : (BPM_PAGE_LABELS[pid] ?? pid)}
-                    </button>
-                  ))}
+                  {(['All', ...uniquePageUrls] as string[]).map((purl) => {
+                    const matchedPage = pages.find((p) => p.url.replace(/\/$/, '') === purl.replace(/\/$/, ''));
+                    const label = purl === 'All' ? 'All' : (matchedPage?.label ?? purl.replace(/^https?:\/\/[^/]+/, ''));
+                    return (
+                      <button key={purl} onClick={() => setFilterPage(purl)}
+                        className={`text-sm px-2.5 py-1 rounded-full border font-medium transition-colors ${
+                          filterPage === purl ? 'bg-primary text-white border-primary' : 'bg-surface text-muted border-border hover:border-primary/40 hover:text-ink'
+                        }`}>
+                        {label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -867,6 +848,7 @@ function SuggestionsSection() {
                 <SuggestionCard
                   key={item.ImprovementID}
                   item={item}
+                  pages={pages}
                   open={expanded.has(item.ImprovementID)}
                   onToggle={() => toggle(item.ImprovementID)}
                   pushOpenId={pushOpenId}
@@ -905,7 +887,7 @@ export default function BpmSeoPage() {
   useEffect(() => { load(); }, [load]);
 
   const handleSaved = (updated: BpmSeoData) => {
-    setPages((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+    setPages((prev) => prev.map((p) => (p.URLID === updated.URLID ? updated : p)));
     setEditing(updated);
   };
 
@@ -980,7 +962,7 @@ export default function BpmSeoPage() {
           <section className="space-y-3">
             <h2 className="text-lg font-bold text-ink">Current SEO Data</h2>
             {pages.map((p) => (
-              <PageCard key={p.id} page={p} onEdit={() => setEditing(p)} />
+              <PageCard key={p.URLID} page={p} onEdit={() => setEditing(p)} />
             ))}
           </section>
 
@@ -988,7 +970,7 @@ export default function BpmSeoPage() {
           <div className="border-t border-border" />
 
           {/* Suggestions section */}
-          <SuggestionsSection />
+          <SuggestionsSection pages={pages} />
         </>
       )}
 
